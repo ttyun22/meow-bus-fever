@@ -1,0 +1,425 @@
+/* ===== 《巴士大疏通》样式 ===== */
+
+:root {
+  --bg: #f2ead9;
+  --card: #fffdf7;
+  --ink: #38301f;
+  --ink-soft: #8f8367;
+  --accent: #ff9f43;
+  --accent-deep: #ef8a2a;
+  --board-bg: #dce9e0;
+  --cell-line: #c3d4c8;
+  --danger: #e8554d;
+  --hairline: #eadfc6;
+
+  --bus-red: #e8554d;
+  --bus-blue: #4d8fe8;
+  --bus-green: #43b96b;
+  --bus-purple: #9a6bd6;
+  --bus-cyan: #35bdc2;
+  --bus-orange: #ef8a2a;
+  --bus-yellow: #e9c23c;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; padding: 0; height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  display: flex; justify-content: center;
+  user-select: none; -webkit-user-select: none;
+}
+
+#app {
+  width: 100%; max-width: 540px; height: 100dvh;
+  display: flex; flex-direction: column;
+  position: relative; overflow: hidden;
+}
+
+.hidden { display: none !important; }
+
+/* ===== 通用按钮 ===== */
+.btn {
+  border: none; cursor: pointer; font-family: inherit;
+  border-radius: 12px; font-size: 15px; font-weight: 600;
+  padding: 10px 18px; color: #fff;
+  transition: transform .12s, filter .12s, box-shadow .12s;
+}
+.btn:active { transform: scale(.95); filter: brightness(.95); }
+.btn:disabled, .btn.disabled {
+  opacity: .45; box-shadow: none; transform: none;
+  cursor: not-allowed; filter: grayscale(.3);
+}
+.btn-primary:disabled { box-shadow: none; }
+.btn-primary { background: linear-gradient(180deg, var(--accent), var(--accent-deep)); box-shadow: 0 4px 0 #c96f14; }
+.btn-primary:active { box-shadow: 0 1px 0 #c96f14; }
+.btn-ghost { background: #efe6d0; color: var(--ink); box-shadow: 0 3px 0 #d8cba9; }
+.btn-ghost:active { box-shadow: 0 1px 0 #d8cba9; }
+.btn-big { font-size: 19px; padding: 14px 46px; border-radius: 16px; }
+
+/* ===== 开始页 ===== */
+#screen-start { flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px; }
+.start-card {
+  background: var(--card); border-radius: 26px; padding: 34px 26px;
+  text-align: center; width: min(100%, 380px);
+  box-shadow: 0 10px 30px rgba(90, 70, 20, .12);
+}
+.start-buses { display: flex; gap: 8px; justify-content: center; margin-bottom: 16px; }
+.mini-bus { width: 84px; height: 44px; position: relative; }
+.mini-bus .bus-svg { width: 84px; height: 42px; left: 0; top: 1px; }
+.game-title { font-size: 40px; margin: 6px 0 8px; letter-spacing: 2px; color: var(--ink); }
+.game-sub { color: var(--ink-soft); margin: 0 0 22px; font-size: 15px; }
+.start-rules { list-style: none; padding: 0; margin: 0 0 26px; text-align: left; }
+.start-rules li {
+  display: flex; align-items: center; gap: 10px;
+  background: #f7f1e2; border-radius: 12px; padding: 10px 12px; margin-bottom: 9px;
+  font-size: 14px; line-height: 1.45; color: #5c523a;
+}
+.rule-ico { font-size: 20px; flex: none; }
+.start-foot { color: var(--ink-soft); font-size: 12px; margin: 14px 0 0; }
+.start-actions { display: flex; flex-direction: column; gap: 10px; align-items: center; }
+
+/* ===== 选关页 ===== */
+#screen-levels {
+  flex: 1; display: flex; flex-direction: column; gap: 10px;
+  padding: 10px 12px calc(12px + env(safe-area-inset-bottom));
+  min-height: 0;
+}
+#levels-head {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--card); border-radius: 14px; padding: 9px 12px;
+  box-shadow: 0 3px 10px rgba(90, 70, 20, .08);
+  border: 1.5px solid var(--hairline);
+}
+#levels-head .btn { padding: 6px 12px; font-size: 13px; flex: none; }
+.levels-title { flex: 1; display: flex; align-items: baseline; justify-content: center; gap: 8px; }
+.levels-title h2 { margin: 0; font-size: 18px; }
+.levels-count { color: var(--ink-soft); font-size: 12.5px; }
+.level-grid {
+  flex: 1; overflow-y: auto; min-height: 0;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 8px; padding: 2px; align-content: start;
+}
+.level-cell {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 10px 4px 8px; border-radius: 14px;
+  background: var(--card); border: 1.5px solid var(--hairline);
+  box-shadow: 0 3px 0 #d8cba9; cursor: pointer; font-family: inherit;
+  transition: transform .12s, filter .12s, box-shadow .12s;
+}
+.level-cell:active { transform: scale(.94); filter: brightness(.95); }
+.level-cell.current {
+  border-color: var(--accent);
+  box-shadow: 0 3px 0 #d8cba9, 0 0 0 3px rgba(255, 159, 67, .3);
+}
+.level-no { font-size: 18px; font-weight: 800; color: var(--ink); }
+.level-name {
+  font-size: 11px; color: var(--ink-soft); max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.level-stars { font-size: 9px; color: var(--accent-deep); letter-spacing: 1px; min-height: 10px; }
+
+/* HUD 关卡名按钮（点击打开选关页） */
+.hud-level-btn {
+  border: none; background: transparent; font-family: inherit;
+  font-weight: 700; font-size: 16px; color: var(--ink);
+  cursor: pointer; padding: 4px 6px; border-radius: 8px;
+  transition: background .12s;
+}
+.hud-level-btn:active { background: #efe6d0; }
+
+/* ===== 游戏页布局 ===== */
+#screen-game {
+  flex: 1; display: flex; flex-direction: column; gap: 6px;
+  padding: 10px 12px calc(12px + env(safe-area-inset-bottom));
+  min-height: 0;
+}
+
+#hud {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--card); border-radius: 14px; padding: 9px 12px;
+  box-shadow: 0 3px 10px rgba(90, 70, 20, .08);
+  border: 1.5px solid var(--hairline);
+}
+.hud-left { font-weight: 700; font-size: 16px; }
+.hud-mid { flex: 1; color: var(--ink-soft); font-size: 13px; text-align: center; }
+.hud-right { display: flex; gap: 8px; }
+.hud-right .btn { padding: 6px 12px; font-size: 13px; }
+.hud-right .btn-icon { padding: 6px 8px; font-size: 14px; line-height: 1; }
+
+.area-label {
+  font-size: 12.5px; font-weight: 800; color: #6d6146;
+  margin: 2px 2px 5px; display: flex; align-items: baseline; gap: 5px;
+}
+.area-sub { font-weight: 400; color: var(--ink-soft); font-size: 11.5px; }
+
+/* --- 候车队列（车站站台） --- */
+#queue-area { flex: none; }
+#queue-area .area-label { color: var(--accent-deep); }
+#queue {
+  display: flex; flex-wrap: wrap; gap: 2px 5px; align-items: flex-end;
+  background: var(--card); border-radius: 16px; padding: 12px 10px 15px;
+  min-height: 70px; box-shadow: 0 3px 10px rgba(90,70,20,.06);
+  border: 1.5px solid var(--hairline);
+  position: relative;
+}
+/* 站台安全线 */
+#queue::after {
+  content: ""; position: absolute; left: 10px; right: 10px; bottom: 5px; height: 4px;
+  border-radius: 2px;
+  background: repeating-linear-gradient(-55deg, #f3c623 0 7px, #b98a1d 7px 12px);
+  opacity: .5;
+}
+.queue-empty { color: var(--ink-soft); font-size: 13px; width: 100%; text-align: center; }
+#queue::before {
+  content: "▶ 先上"; color: var(--accent-deep); font-size: 11px; font-weight: 800;
+  margin-right: 3px; align-self: center;
+}
+
+/* --- 卡通乘客（头/身体/四肢，衣服色 = 匹配色） --- */
+.passenger {
+  width: 34px; height: 44px; position: relative; margin-bottom: 3px;
+  transition: transform .15s;
+}
+.pp-svg { width: 100%; height: 100%; display: block; overflow: visible; pointer-events: none; }
+.pp-body, .pp-arm { fill: var(--pc, #999); }
+.pp-arm { stroke: rgba(0,0,0,.18); stroke-width: 1; }
+.pp-leg { fill: #6a5b47; }
+.pp-head { fill: #ffdfb8; }
+.pp-hair { fill: none; stroke: #5a4632; stroke-width: 4.6; stroke-linecap: round; }
+.pp-eye { fill: #3a3020; }
+.pp-blush { fill: rgba(232,85,77,.32); }
+.pp-mouth { fill: none; stroke: #8a5a3a; stroke-width: 1.2; stroke-linecap: round; }
+
+/* 队首：放大 + 地面光环 + 头顶箭头 */
+.passenger.head { transform: scale(1.16); transform-origin: 50% 100%; z-index: 2; }
+.passenger.head::before {
+  content: ""; position: absolute; left: 50%; bottom: -3px; transform: translateX(-50%);
+  width: 30px; height: 7px; border-radius: 50%;
+  background: rgba(255,159,67,.4);
+  box-shadow: 0 0 0 2px rgba(255,159,67,.5);
+}
+.passenger.head::after {
+  content: ""; position: absolute; top: -10px; left: 50%; transform: translateX(-50%);
+  border: 5px solid transparent; border-top-color: var(--accent-deep);
+  filter: drop-shadow(0 1px 1px rgba(0,0,0,.2));
+}
+
+/* --- 接客位（停车位）：紧邻队列下方，间距紧凑 --- */
+#slots-area { flex: none; margin-top: clamp(16px, 4.5vw, 24px); }
+
+/* --- 停车场（车辆堆叠区）：占据剩余空间，棋盘自适应居中 --- */
+#board-area { flex: 1; display: flex; flex-direction: column; min-height: 0; margin-top: 2px; }
+#board-wrap { flex: 1; min-height: 0; display: flex; justify-content: center; align-items: center; }
+#board { position: relative; background: var(--board-bg); border-radius: 12px; }
+.cell {
+  position: absolute;
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 1px var(--cell-line);
+}
+
+/* --- 卡通巴士 ---
+   .bus 元素 = 整个格区（位置与尺寸不变），作为点击热区，保证点击零错位；
+   .bus-inner = 车身容器（格区 × 0.82 居中），内部为 SVG 卡通公交；
+   车窗/车门/车轮/车灯均为 SVG 内部图形，不构成独立可点击元素。 */
+.bus { position: absolute; cursor: pointer; z-index: 2; }
+.bus-inner { position: absolute; border-radius: 8px; transition: filter .15s; }
+.bus:hover .bus-inner { filter: brightness(1.06) saturate(1.05); }
+.bus:active .bus-inner { filter: brightness(1.12); }
+
+/* 巴士 SVG 部件配色（车身色 = 匹配色 --bc）· 俯视图 */
+.bus-svg { position: absolute; overflow: visible; pointer-events: none; }
+.bus-body { fill: var(--bc, #999); }
+.bus-topline { fill: rgba(255,255,255,.16); }
+.bus-windshield { fill: rgba(255,255,255,.85); }
+.bus-lamp { fill: #ffd76a; }
+.bus-taillight { fill: #ff8f88; }
+.bus-wheel { fill: #3b352c; }
+/* 车顶座位进度点 */
+.bus-seat { fill: rgba(255,255,255,.38); }
+.bus-seat.filled { fill: #fff; }
+/* 车顶方向箭头：白色箭头 + 深色衬底（任何车身色上可读） */
+.bus-arrow-under {
+  fill: none; stroke: rgba(30, 26, 16, .45); stroke-width: 5.4; stroke-linecap: round; stroke-linejoin: round;
+}
+.bus-arrow {
+  fill: none; stroke: #fff; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round;
+}
+
+/* 朝向：SVG 默认朝右，其余方向整体旋转 */
+.dir-right .bus-svg { transform: rotate(0deg); }
+.dir-left  .bus-svg { transform: rotate(180deg); }
+.dir-down  .bus-svg { transform: rotate(90deg); }
+.dir-up    .bus-svg { transform: rotate(-90deg); }
+
+/* 载客徽章（当前人数/容量） */
+.bus-cap {
+  position: absolute; right: -5px; top: -8px;
+  background: var(--card); color: var(--ink);
+  border: 1.5px solid rgba(0,0,0,.12);
+  font-size: 10.5px; font-weight: 800; line-height: 1;
+  padding: 3px 5px; border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.18);
+  pointer-events: none; z-index: 3; white-space: nowrap;
+}
+
+/* 「可驶出」提示：车头方向的小箭头（呼吸闪烁） */
+.bus.can-exit .bus-inner::after {
+  content: ""; position: absolute; z-index: 4;
+  width: 0; height: 0; border: 7px solid transparent;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,.25));
+  animation: exitNudge 1.1s ease-in-out infinite;
+  pointer-events: none;
+}
+.dir-right.can-exit .bus-inner::after { left: calc(100% + 2px); top: 50%; margin-top: -7px; border-left-color: var(--accent); border-right-width: 0; }
+.dir-left.can-exit  .bus-inner::after { right: calc(100% + 2px); top: 50%; margin-top: -7px; border-right-color: var(--accent); border-left-width: 0; }
+.dir-down.can-exit  .bus-inner::after { top: calc(100% + 2px); left: 50%; margin-left: -7px; border-top-color: var(--accent); border-bottom-width: 0; }
+.dir-up.can-exit    .bus-inner::after { bottom: calc(100% + 2px); left: 50%; margin-left: -7px; border-bottom-color: var(--accent); border-top-width: 0; }
+@keyframes exitNudge { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
+
+/* --- 接客位 --- */
+#slots { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+#slots-area.anim-area-flash #slots {
+  animation: areaFlash .42s 2;
+}
+@keyframes areaFlash {
+  0%, 100% { box-shadow: none; }
+  50% { box-shadow: 0 0 0 3px var(--accent); border-radius: 16px; }
+}
+.slot {
+  width: 96px; height: 58px; border-radius: 16px;
+  background: var(--card); box-shadow: 0 3px 10px rgba(90,70,20,.08);
+  display: flex; align-items: center; justify-content: center;
+  position: relative;
+  border: 1.5px solid var(--hairline);
+}
+.slot-empty {
+  width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
+  border: 2px dashed #d5c9a8; border-radius: 16px; color: #c2b58f;
+  font-size: 13px; font-weight: 700;
+}
+.slot-bus { width: 86px; height: 46px; position: relative; }
+.slot-bus .bus-svg { width: 86px; height: 43px; left: 0; top: 1px; }
+.slot-bus .bus-cap { right: -2px; top: -7px; }
+
+/* --- 颜色（车身 --bc / 乘客衣服 --pc 同源） --- */
+.c-red    { --bc: var(--bus-red); --pc: var(--bus-red); }
+.c-blue   { --bc: var(--bus-blue); --pc: var(--bus-blue); }
+.c-green  { --bc: var(--bus-green); --pc: var(--bus-green); }
+.c-purple { --bc: var(--bus-purple); --pc: var(--bus-purple); }
+.c-cyan   { --bc: var(--bus-cyan); --pc: var(--bus-cyan); }
+.c-orange { --bc: var(--bus-orange); --pc: var(--bus-orange); }
+.c-yellow { --bc: var(--bus-yellow); --pc: var(--bus-yellow); }
+
+/* --- 提示条 --- */
+#toast {
+  position: absolute; top: 64px; left: 50%; transform: translateX(-50%);
+  background: rgba(45, 38, 24, .92); color: #fff;
+  padding: 9px 16px; border-radius: 12px; font-size: 13.5px;
+  max-width: 86%; text-align: center; z-index: 60;
+  animation: toastIn .25s;
+  box-shadow: 0 6px 18px rgba(0,0,0,.25);
+}
+@keyframes toastIn { from { opacity: 0; transform: translate(-50%, -8px); } }
+
+/* --- 结算覆盖层 ---
+   背景不拦截点击（pointer-events:none）：胜负结算后玩家仍可从
+   HUD 使用「撤回」回退到操作前继续游玩；卡片本身拦截。 */
+.overlay {
+  position: absolute; inset: 0; z-index: 50;
+  background: rgba(40, 32, 16, .45); backdrop-filter: blur(2px);
+  display: flex; align-items: center; justify-content: center;
+  animation: fadeIn .25s;
+  pointer-events: none;
+}
+.overlay-card {
+  background: var(--card); border-radius: 22px; padding: 30px 26px;
+  width: min(86%, 360px); text-align: center;
+  box-shadow: 0 14px 40px rgba(50, 40, 10, .3);
+  animation: popIn .35s;
+  pointer-events: auto;
+}
+.overlay-icon { font-size: 52px; line-height: 1; }
+.overlay-card h2 { margin: 12px 0 8px; font-size: 26px; }
+#overlay-text { color: var(--ink-soft); font-size: 14.5px; line-height: 1.6; margin: 0 0 22px; }
+.overlay-btns { display: flex; gap: 10px; justify-content: center; }
+
+/* ===== 动画 ===== */
+@keyframes fadeIn { from { opacity: 0; } }
+@keyframes popIn { from { transform: scale(.6); opacity: 0; } }
+.pop-in { animation: popIn .3s cubic-bezier(.2, 1.4, .5, 1); }
+
+@keyframes bump { 50% { transform: scale(1.18); } }
+.anim-bump { animation: bump .3s; }
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-8px); }
+  40% { transform: translateX(8px); }
+  60% { transform: translateX(-6px); }
+  80% { transform: translateX(6px); }
+}
+.anim-shake { animation: shake .45s; }
+
+@keyframes blockFlash {
+  0%, 100% { box-shadow: none; }
+  50% { box-shadow: 0 0 0 4px rgba(232, 85, 77, .85); border-radius: 8px; }
+}
+.anim-flash { animation: blockFlash .45s 2; }
+
+.bus.anim-exit {
+  transition: transform .42s cubic-bezier(.5, 0, 1, 1), opacity .42s;
+  z-index: 5; opacity: .85;
+}
+
+/* --- 驶出路径预览（hover，只读） --- */
+.path-hint {
+  position: absolute; z-index: 1; pointer-events: none;
+  border-radius: 6px;
+  background: rgba(67, 185, 107, .32);
+  box-shadow: inset 0 0 0 2px rgba(67, 185, 107, .75);
+  animation: pathHintIn .18s ease-out;
+}
+.path-hint.blocked {
+  background: rgba(232, 85, 77, .34);
+  box-shadow: inset 0 0 0 2px rgba(232, 85, 77, .9);
+}
+@keyframes pathHintIn { from { opacity: 0; transform: scale(.6); } }
+
+/* --- 分阶段教学：目标高亮环 + 气泡（z-index 低于结算覆盖层 50） --- */
+.tut-ring {
+  animation: tutPulse 1.15s ease-in-out infinite;
+  border-radius: 10px;
+}
+@keyframes tutPulse {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(255, 159, 67, .95), 0 0 14px rgba(255, 159, 67, .5); }
+  50% { box-shadow: 0 0 0 6px rgba(255, 159, 67, .35), 0 0 0 10px rgba(255, 159, 67, .12); }
+}
+.tut-bubble {
+  position: fixed; z-index: 45;
+  background: var(--card); color: var(--ink);
+  border: 2px solid var(--accent);
+  border-radius: 14px; padding: 10px 14px;
+  max-width: min(240px, 72vw);
+  font-size: 13px; line-height: 1.5; font-weight: 600;
+  box-shadow: 0 8px 24px rgba(90, 70, 20, .25);
+  animation: popIn .25s;
+}
+.tut-bubble p { margin: 0; }
+.tut-bubble .btn { margin-top: 8px; padding: 5px 14px; font-size: 12.5px; }
+.slot-bus.anim-depart {
+  transition: transform .45s ease-in, opacity .45s;
+  z-index: 3;
+}
+.passenger.flying {
+  position: fixed; z-index: 99; margin: 0;
+  transition: left .3s ease-in, top .3s ease-in, transform .3s, opacity .3s;
+  pointer-events: none;
+}
+
+/* ===== 桌面适配 ===== */
+@media (min-width: 700px) {
+  #app { box-shadow: 0 0 40px rgba(80, 60, 20, .15); }
+  .game-title { font-size: 46px; }
+}

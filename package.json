@@ -1,0 +1,12 @@
+{
+  "name": "bus-unblock",
+  "version": "0.1.0",
+  "description": "巴士大疏通 —— 巴士交通解谜 H5 游戏",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "python3 -m http.server 8080",
+    "verify": "node src/game/solver.js",
+    "stats": "node src/game/solver.js --write-stats"
+  }
+}

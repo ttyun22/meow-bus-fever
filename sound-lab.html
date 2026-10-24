@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <title>音效试听 · 巴士大疏通</title>
+  <link rel="stylesheet" href="src/styles.css">
+  <style>
+    /* ===== 试听选择器专用样式（复用 styles.css 的变量与按钮体系） ===== */
+    .lab-wrap {
+      flex: 1; display: flex; flex-direction: column; align-items: center;
+      padding: 22px 16px calc(20px + env(safe-area-inset-bottom));
+      overflow-y: auto;
+    }
+    .lab-card {
+      background: var(--card); border-radius: 22px; padding: 20px 18px;
+      width: min(100%, 420px);
+      box-shadow: 0 10px 30px rgba(90, 70, 20, .12);
+    }
+    .lab-title { font-size: 26px; margin: 4px 0 6px; text-align: center; }
+    .lab-sub { color: var(--ink-soft); font-size: 13px; text-align: center; margin: 0 0 14px; }
+    .lab-group-title {
+      font-size: 15px; font-weight: 800; color: #6d6146;
+      margin: 14px 2px 8px; display: flex; align-items: baseline; gap: 6px;
+    }
+    .lab-group-title .lab-group-sub { font-weight: 400; font-size: 11.5px; color: var(--ink-soft); }
+    .lab-status {
+      background: #f7f1e2; border-radius: 12px; padding: 10px 12px;
+      font-size: 13px; color: #5c523a; margin-bottom: 8px; line-height: 1.5;
+    }
+    .lab-status b { color: var(--accent-deep); }
+    .lab-list { display: flex; flex-direction: column; gap: 10px; }
+    .lab-item {
+      display: flex; align-items: center; gap: 12px;
+      border: 1.5px solid var(--hairline); border-radius: 16px;
+      padding: 10px 12px; background: #fffdf7;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    .lab-item.playing { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(255,159,67,.25); }
+    .lab-item.chosen { border-color: var(--bus-green); box-shadow: 0 0 0 2px rgba(67,185,107,.25); }
+    .lab-letter {
+      flex: none; width: 34px; height: 34px; border-radius: 10px;
+      background: linear-gradient(180deg, var(--accent), var(--accent-deep));
+      color: #fff; font-weight: 800; font-size: 16px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .lab-item.chosen .lab-letter { background: linear-gradient(180deg, #43b96b, #359a58); }
+    .lab-info { flex: 1; min-width: 0; }
+    .lab-name { font-weight: 800; font-size: 15px; }
+    .lab-name .lab-badge {
+      font-size: 11px; font-weight: 700; color: var(--accent-deep);
+      background: rgba(255,159,67,.16); border-radius: 6px; padding: 2px 6px; margin-left: 6px;
+      vertical-align: 1px;
+    }
+    .lab-item.chosen .lab-badge.sel { color: #2e7d4c; background: rgba(67,185,107,.16); }
+    .lab-desc { color: var(--ink-soft); font-size: 12px; margin-top: 2px; line-height: 1.4; }
+    .lab-btns { display: flex; flex-direction: column; gap: 6px; flex: none; }
+    .lab-btns .btn { padding: 7px 12px; font-size: 12.5px; white-space: nowrap; }
+    .lab-controls {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+      background: #f7f1e2; border-radius: 12px; padding: 10px 12px;
+    }
+    .lab-controls label { font-size: 13px; font-weight: 700; color: #5c523a; white-space: nowrap; }
+    .lab-controls input[type="range"] { flex: 1; accent-color: var(--accent-deep); }
+    .lab-foot { margin-top: 14px; text-align: center; font-size: 12.5px; }
+    .lab-foot a { color: var(--accent-deep); text-decoration: none; font-weight: 700; }
+    .lab-unsupported {
+      border: 1.5px solid var(--danger); color: var(--danger);
+      border-radius: 12px; padding: 10px 12px; font-size: 13px; margin-bottom: 14px;
+      background: rgba(232,85,77,.06);
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="lab-wrap">
+      <div class="lab-card">
+        <h1 class="lab-title">🔊 音效试听</h1>
+        <p class="lab-sub">为《巴士大疏通》挑选音效 · 互斥试听不叠加 · 选择保存在本机</p>
+
+        <div id="lab-unsupported" class="lab-unsupported hidden">
+          当前浏览器不支持 Web Audio，无法试听音效。请换用最新版 Chrome / Edge / Safari。
+        </div>
+
+        <div class="lab-controls">
+          <button id="lab-mute" class="btn btn-ghost btn-icon">🔊</button>
+          <label for="lab-vol">音量</label>
+          <input id="lab-vol" type="range" min="0" max="100" step="1" value="100">
+        </div>
+
+        <div class="lab-group-title">🖱️ 按钮点击音效 <span class="lab-group-sub">6 选 1</span></div>
+        <div id="lab-status-click" class="lab-status"></div>
+        <div id="lab-list-click" class="lab-list"></div>
+
+        <p class="lab-foot">
+          确认后下一轮才把选定音效接入主游戏 ·
+          <a href="index.html">← 返回游戏</a>
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import {
+      CLICK_CANDIDATES,
+      previewClick,
+      stopClickPreview,
+      getClickChoice,
+      setClickChoice,
+      isAudioSupported,
+      isMuted,
+      setMuted,
+      getVolume,
+      setVolume,
+    } from './src/ui/sound.js';
+
+    const $ = (id) => document.getElementById(id);
+    let playingTimer = null;
+
+    /* ---------- 不支持 Web Audio 的兜底提示 ---------- */
+    if (!isAudioSupported()) {
+      $('lab-unsupported').classList.remove('hidden');
+      $('lab-mute').disabled = true;
+      $('lab-vol').disabled = true;
+    }
+
+    /**
+     * 试听组工厂：渲染一组候选卡片并接管其播放/选择/状态展示。
+     * 两组的试听互斥由 sound.js 内部统一 stopPreview 保证。
+     */
+    function setupGroup({ listEl, statusEl, candidates, preview, getChoice, setChoice, emptyHint }) {
+      let chosen = getChoice();
+
+      function renderStatus() {
+        const c = candidates.find((k) => k.id === chosen);
+        statusEl.innerHTML = c
+          ? `当前选择：<b>${c.id} · ${c.name}</b>（已保存在本机，确认后接入主游戏）`
+          : emptyHint;
+      }
+
+      function renderList() {
+        listEl.innerHTML = '';
+        for (const c of candidates) {
+          const item = document.createElement('div');
+          item.className = 'lab-item';
+          item.dataset.cid = c.id;
+          const isChosen = chosen === c.id;
+          if (isChosen) item.classList.add('chosen');
+          item.innerHTML = `
+            <div class="lab-letter">${c.id}</div>
+            <div class="lab-info">
+              <div class="lab-name">${c.name}<span class="lab-badge playing-badge hidden">正在试听</span><span class="lab-badge sel ${isChosen ? '' : 'hidden'}">已选用</span></div>
+              <div class="lab-desc">${c.desc}</div>
+            </div>
+            <div class="lab-btns">
+              <button class="btn btn-primary" data-act="play">▶ 播放</button>
+              <button class="btn btn-ghost" data-act="choose">${isChosen ? '已选用 ✓' : '选用此音效'}</button>
+            </div>`;
+          item.querySelector('[data-act="play"]').addEventListener('click', async () => {
+            if (await preview(c.id)) markPlaying(item);
+          });
+          item.querySelector('[data-act="choose"]').addEventListener('click', async () => {
+            chosen = c.id;
+            setChoice(c.id);
+            renderStatus();
+            renderList();
+            markPlaying(item.dataset.cid && listEl.querySelector(`[data-cid="${c.id}"]`));
+            await preview(c.id);
+          });
+          listEl.appendChild(item);
+        }
+      }
+
+      renderStatus();
+      renderList();
+      return {
+        get chosenId() { return chosen; },
+      };
+    }
+
+    /** 「正在试听」标识：跨两组全局唯一，试听音很短，定时清除即可。 */
+    function markPlaying(itemEl) {
+      clearTimeout(playingTimer);
+      document.querySelectorAll('.lab-item').forEach((el) => {
+        const on = el === itemEl;
+        el.classList.toggle('playing', on);
+        el.querySelector('.playing-badge').classList.toggle('hidden', !on);
+      });
+      playingTimer = setTimeout(() => {
+        document.querySelectorAll('.lab-item').forEach((el) => {
+          el.classList.remove('playing');
+          el.querySelector('.playing-badge').classList.add('hidden');
+        });
+      }, 550);
+    }
+
+    const clickGroup = setupGroup({
+      listEl: $('lab-list-click'),
+      statusEl: $('lab-status-click'),
+      candidates: CLICK_CANDIDATES,
+      preview: previewClick,
+      getChoice: getClickChoice,
+      setChoice: setClickChoice,
+      emptyHint: '尚未选择点击音效。点「▶ 播放」试听，点「选用」记下你的选择。',
+    });
+
+    /* ---------- 全局静音 / 音量 ---------- */
+    function renderMute() {
+      $('lab-mute').textContent = isMuted() ? '🔇' : '🔊';
+      $('lab-mute').title = isMuted() ? '已静音，点击开启' : '点击静音';
+    }
+    $('lab-mute').addEventListener('click', () => {
+      setMuted(!isMuted());
+      renderMute();
+      if (!isMuted()) previewClick(clickGroup.chosenId || 'A'); // 解除静音时给一声反馈
+    });
+    const volEl = $('lab-vol');
+    volEl.value = String(Math.round(getVolume() * 100));
+    volEl.addEventListener('input', () => setVolume(volEl.value / 100));
+    volEl.addEventListener('change', () => previewClick(clickGroup.chosenId || 'A')); // 调完听一声
+
+    window.addEventListener('pagehide', stopClickPreview);
+
+    renderMute();
+  </script>
+</body>
+</html>
