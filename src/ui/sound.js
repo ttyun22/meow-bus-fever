@@ -19,6 +19,15 @@
 const MUTE_KEY = 'bus-sound-muted';
 const VOLUME_KEY = 'bus-sound-volume';
 const CLICK_CHOICE_KEY = 'bus-click-sound-v1';
+const BGM_MUTE_KEY = 'bus-bgm-muted';
+const BGM_VOLUME_KEY = 'bus-bgm-volume';
+
+/**
+ * 本地 BGM（assets/bgm-cat-bus.wav）。
+ * 由 tools/generate-bgm.py 纯合成生成，无版权/外链/网络依赖；
+ * 使用 decodeAudioData + loop=true 播放，循环点由音频采样精确控制。
+ */
+const BGM_URL = new URL('../../assets/bgm-cat-bus.wav', import.meta.url).href;
 
 let ctx = null;
 let ctxFailed = false;
@@ -27,10 +36,32 @@ let volume = 1;
 let masterGain = null;
 const lastPlay = {};
 
+/* BGM 独立于 SFX：自己的 gain、自己的开关/音量，不经过 masterGain，
+   因此关闭背景音乐不会影响点击、上车、胜利等游戏音效。 */
+let bgmMuted = false;
+let bgmVolume = 0.32;
+let bgmGain = null;
+let bgmDuckGain = null;
+let bgmPlaying = false;
+let bgmStarting = false;
+let bgmWanted = false;
+let bgmTimer = null;
+let bgmSource = null;
+let bgmBuffer = null;
+let bgmBufferPromise = null;
+let bgmUsesFile = false;
+let bgmPausedByVisibility = false;
+let bgmStep = 0;
+let bgmNextTime = 0;
+let bgmDuckTimer = null;
+
 try {
   muted = localStorage.getItem(MUTE_KEY) === '1';
   const v = parseFloat(localStorage.getItem(VOLUME_KEY));
   if (Number.isFinite(v)) volume = Math.min(1, Math.max(0, v));
+  bgmMuted = localStorage.getItem(BGM_MUTE_KEY) === '1';
+  const bv = parseFloat(localStorage.getItem(BGM_VOLUME_KEY));
+  if (Number.isFinite(bv)) bgmVolume = Math.min(1, Math.max(0, bv));
 } catch { /* 隐私模式等场景下忽略 */ }
 
 /** 当前环境是否具备 Web Audio 能力（试听页据此给出提示）。 */
@@ -47,6 +78,12 @@ function ensureCtx() {
     masterGain = ctx.createGain();
     masterGain.gain.value = volume;
     masterGain.connect(ctx.destination);
+    bgmGain = ctx.createGain();
+    bgmGain.gain.value = 0.0001;
+    // 独立 duck 级：播放 SFX 时轻轻压低 BGM，保证点击/上车/发车音清晰。
+    bgmDuckGain = ctx.createGain();
+    bgmDuckGain.gain.value = 1;
+    bgmGain.connect(bgmDuckGain).connect(ctx.destination);
   } catch {
     ctxFailed = true;
     return null;
@@ -54,12 +91,73 @@ function ensureCtx() {
   return ctx;
 }
 
-/** 首次用户手势时调用：解锁自动播放限制。 */
-export function unlockAudio() {
+/**
+ * 首次用户手势时调用：解锁自动播放限制，并在允许时启动 BGM。
+ * 重复调用是安全的：startBgm 有 bgmPlaying / bgmStarting 双重保护。
+ */
+export function unlockAudio(autoStart = true) {
   const c = ensureCtx();
-  if (c && c.state === 'suspended') {
-    c.resume().catch(() => {});
+  if (!c) return;
+  const kick = () => {
+    if (autoStart && !bgmMuted) startBgm();
+  };
+  if (c.state === 'suspended') {
+    c.resume().then(kick).catch(() => {});
+  } else {
+    kick();
   }
+}
+
+/**
+ * 解码本地 BGM。只加载一次；失败时回退到程序化合成，绝不让游戏静音崩溃。
+ * （fetch/decode 不依赖自动播放权限，可在首次手势前预取。）
+ */
+function loadBgmBuffer() {
+  if (bgmBuffer) return Promise.resolve(bgmBuffer);
+  if (bgmBufferPromise) return bgmBufferPromise;
+  const c = ensureCtx();
+  if (!c) return Promise.resolve(null);
+  bgmBufferPromise = fetch(BGM_URL, { cache: 'force-cache' })
+    .then((res) => {
+      if (!res.ok) throw new Error(`BGM HTTP ${res.status}`);
+      return res.arrayBuffer();
+    })
+    .then((data) => new Promise((resolve, reject) => {
+      // Safari 旧版只支持回调形式；两种都包一层。
+      const ret = c.decodeAudioData(data, resolve, reject);
+      if (ret && typeof ret.then === 'function') ret.then(resolve, reject);
+    }))
+    .then((buffer) => {
+      bgmBuffer = buffer;
+      return buffer;
+    })
+    .catch(() => {
+      bgmBufferPromise = null;
+      return null;
+    });
+  return bgmBufferPromise;
+}
+
+/** 首屏预取/解码 BGM（只准备 AudioBuffer，不播放，不触发自动播放限制）。 */
+export function preloadBgm() {
+  if (bgmMuted) return;
+  // 让首帧先绘制，再异步 fetch + decode；点击「开始游戏」时通常已就绪。
+  setTimeout(() => loadBgmBuffer(), 0);
+}
+
+/** 播放 SFX 时短暂压低 BGM，避免旋律盖住操作反馈。 */
+function duckBgm() {
+  if (!ctx || !bgmDuckGain || !bgmPlaying) return;
+  const now = ctx.currentTime;
+  bgmDuckGain.gain.cancelScheduledValues(now);
+  bgmDuckGain.gain.setTargetAtTime(0.42, now, 0.012);
+  clearTimeout(bgmDuckTimer);
+  bgmDuckTimer = setTimeout(() => {
+    if (!ctx || !bgmDuckGain) return;
+    const t = ctx.currentTime;
+    bgmDuckGain.gain.cancelScheduledValues(t);
+    bgmDuckGain.gain.setTargetAtTime(1, t, 0.2);
+  }, 180);
 }
 
 /* ---------------- 基础发音器 ---------------- */
@@ -161,8 +259,266 @@ export function playSound(name) {
     lastPlay[name] = now;
     if (!ensureCtx()) return;
     if (ctx.state !== 'running') return; // 尚未解锁：跳过而非报错
+    duckBgm();
     SFX[name]?.();
   } catch { /* 音效失败不影响游戏逻辑 */ }
+}
+
+/* ================= 循环 BGM =================
+ * 主方案：assets/bgm-cat-bus.wav（本地合成、无版权/外链）。
+ * 114 BPM、16 小节，C 大调五声音阶，木琴 + 玩具拨弦 + 轻打击，
+ * 比旧版 84 BPM 的慢速铺底更活泼、更俏皮；音量低于 SFX，并在
+ * 每次操作音播放时自动 duck 一下，保证点击/上车/发车音清晰可辨。
+ *
+ * 兜底方案：若浏览器无法解码 WAV，则使用下面的程序化合成循环。
+ * 两条路径共用 bgmGain，且都有 bgmPlaying / bgmStarting 双重保护，
+ * 切换关卡、重复点击都不会叠加第二个音乐实例。
+ */
+const BGM_TEMPO = 114;
+const BGM_STEP = 60 / BGM_TEMPO / 2; // 八分音符
+const BGM_STEPS_PER_BAR = 8;
+const BGM_BARS = 8;
+const BGM_LOOP_STEPS = BGM_STEPS_PER_BAR * BGM_BARS;
+const BGM_LOOKAHEAD = 0.35;
+const BGM_TICK_MS = 80;
+
+const midiHz = (n) => 440 * 2 ** ((n - 69) / 12);
+
+/** 兜底合成：8 小节 C → Am → F → G → C → Em → F → G。 */
+const BGM_CHORDS = [
+  { bass: 48, chord: [60, 64, 67, 72], motif: [72, 76, 79, 76] },
+  { bass: 45, chord: [57, 60, 64, 69], motif: [69, 72, 76, 74] },
+  { bass: 41, chord: [53, 57, 60, 65], motif: [72, 77, 81, 77] },
+  { bass: 43, chord: [55, 59, 62, 67], motif: [74, 79, 83, 79] },
+  { bass: 48, chord: [60, 64, 67, 72], motif: [76, 79, 84, 79] },
+  { bass: 40, chord: [52, 55, 59, 64], motif: [71, 76, 79, 76] },
+  { bass: 41, chord: [53, 57, 60, 65], motif: [77, 81, 84, 81] },
+  { bass: 43, chord: [55, 59, 62, 67], motif: [79, 83, 86, 79] },
+];
+
+function bgmTone(midi, when, duration, gain = 0.05, type = 'triangle') {
+  if (!ctx || !bgmGain) return;
+  const t0 = when;
+  const osc = ctx.createOscillator();
+  const g = ctx.createGain();
+  const filter = ctx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.setValueAtTime(3200, t0);
+  filter.frequency.exponentialRampToValueAtTime(1000, t0 + duration);
+  osc.type = type;
+  osc.frequency.setValueAtTime(midiHz(midi), t0);
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(gain, t0 + 0.015);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
+  osc.connect(filter).connect(g).connect(bgmGain);
+  osc.start(t0);
+  osc.stop(t0 + duration + 0.05);
+}
+
+function bgmPad(midis, when, duration) {
+  for (const midi of midis) {
+    if (!ctx || !bgmGain) return;
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(midiHz(midi - 12), when);
+    g.gain.setValueAtTime(0.0001, when);
+    g.gain.exponentialRampToValueAtTime(0.012, when + 0.13);
+    g.gain.exponentialRampToValueAtTime(0.0001, when + duration);
+    osc.connect(g).connect(bgmGain);
+    osc.start(when);
+    osc.stop(when + duration + 0.05);
+  }
+}
+
+/** 兜底合成的一个八分音符步骤：低音 + 反拍和弦 + 木琴旋律。 */
+function scheduleBgmStep(step, when) {
+  const bar = Math.floor(step / BGM_STEPS_PER_BAR) % BGM_BARS;
+  const beat = step % BGM_STEPS_PER_BAR;
+  const chord = BGM_CHORDS[bar];
+
+  if (beat === 0) bgmTone(chord.bass, when, 0.52, 0.055, 'triangle');
+  if (beat === 3) bgmTone(chord.bass + 7, when, 0.28, 0.028, 'triangle');
+  if (beat === 4) bgmTone(chord.bass, when, 0.38, 0.045, 'triangle');
+  if (beat === 6) bgmTone(chord.bass + 12, when, 0.22, 0.022, 'triangle');
+
+  if (beat === 1 || beat === 5) bgmPad(chord.chord, when, 0.75);
+
+  const motifIndex = [0, 2, 3, 4, 6, 7].indexOf(beat);
+  if (motifIndex >= 0) {
+    const midi = chord.motif[(motifIndex + bar) % chord.motif.length];
+    bgmTone(midi, when, 0.34, motifIndex === 0 ? 0.038 : 0.026, 'triangle');
+    if (motifIndex === 0) bgmTone(midi + 12, when + 0.01, 0.22, 0.010, 'sine');
+  }
+}
+
+function bgmScheduler() {
+  if (!bgmPlaying || !ctx) return;
+  while (bgmNextTime < ctx.currentTime + BGM_LOOKAHEAD) {
+    scheduleBgmStep(bgmStep, bgmNextTime);
+    bgmStep = (bgmStep + 1) % BGM_LOOP_STEPS;
+    bgmNextTime += BGM_STEP;
+  }
+}
+
+function stopBgmSource() {
+  if (!ctx || !bgmSource) return;
+  const src = bgmSource;
+  bgmSource = null;
+  try { src.stop(); } catch { /* 已停止 */ }
+  try { src.disconnect(); } catch { /* 已断开 */ }
+}
+
+function startBufferBgm(c, buffer) {
+  stopBgmSource();
+  const src = c.createBufferSource();
+  src.buffer = buffer;
+  src.loop = true;
+  src.loopStart = 0;
+  src.loopEnd = buffer.duration;
+  src.connect(bgmGain);
+  src.start(c.currentTime + 0.06);
+  bgmSource = src;
+  bgmUsesFile = true;
+  bgmPlaying = true;
+}
+
+function startSynthBgm(c) {
+  stopBgmSource();
+  bgmUsesFile = false;
+  bgmPlaying = true;
+  bgmStep = 0;
+  bgmNextTime = c.currentTime + 0.1;
+  clearInterval(bgmTimer);
+  bgmTimer = setInterval(bgmScheduler, BGM_TICK_MS);
+  bgmScheduler();
+}
+
+/** 启动 BGM：已播放 / 启动中直接返回，绝不会叠加第二条音乐。 */
+export function startBgm() {
+  if (bgmMuted) {
+    bgmWanted = false;
+    return;
+  }
+  bgmWanted = true;
+  if (bgmPlaying || bgmStarting) return;
+  const c = ensureCtx();
+  if (!c || !bgmGain) return;
+  bgmStarting = true;
+  (async () => {
+    try {
+      if (c.state !== 'running') {
+        try { await c.resume(); } catch { /* 等下次手势 */ }
+      }
+      if (!bgmWanted || bgmMuted || document.hidden) return;
+      if (c.state !== 'running') return;
+      const buffer = await loadBgmBuffer();
+      if (!bgmWanted || bgmMuted || document.hidden) return;
+      if (c.state !== 'running') return;
+      const now = c.currentTime;
+      bgmGain.gain.cancelScheduledValues(now);
+      bgmGain.gain.setValueAtTime(0.0001, now);
+      bgmGain.gain.exponentialRampToValueAtTime(Math.max(0.0001, bgmVolume), now + 0.8);
+      if (buffer) startBufferBgm(c, buffer);
+      else startSynthBgm(c);
+    } finally {
+      bgmStarting = false;
+      // 异步加载期间若被关掉又打开，确保最终仍会播放。
+      // 仅在 AudioContext 已 running 时重试，避免自动播放被拒后无限重试。
+      if (bgmWanted && !bgmMuted && !bgmPlaying && !document.hidden && c.state === 'running') {
+        setTimeout(() => {
+          if (bgmWanted && !bgmMuted && !bgmPlaying) startBgm();
+        }, 0);
+      }
+    }
+  })();
+}
+
+/** 停止 BGM：淡出并停止当前音源，不销毁共享 AudioContext / SFX 总线。 */
+export function stopBgm() {
+  bgmWanted = false;
+  bgmPlaying = false;
+  bgmUsesFile = false;
+  clearInterval(bgmTimer);
+  bgmTimer = null;
+  if (ctx && bgmGain) {
+    const now = ctx.currentTime;
+    bgmGain.gain.cancelScheduledValues(now);
+    bgmGain.gain.setValueAtTime(Math.max(0.0001, bgmGain.gain.value), now);
+    bgmGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+  }
+  if (!ctx || !bgmSource) return;
+  // 保留引用到 onended：若用户很快再次开启，startBufferBgm 会立即
+  // stopBgmSource()，避免旧循环和新循环短暂叠加。
+  const src = bgmSource;
+  const stopAt = ctx.currentTime + 0.19;
+  try { src.stop(stopAt); } catch { /* 已停止 */ }
+  src.onended = () => {
+    if (bgmSource === src) bgmSource = null;
+    try { src.disconnect(); } catch { /* 已断开 */ }
+  };
+}
+
+export function isBgmMuted() {
+  return bgmMuted;
+}
+
+/** 单独开关 BGM 并持久化；不会影响 any SFX。 */
+export function setBgmMuted(v) {
+  bgmMuted = !!v;
+  try {
+    localStorage.setItem(BGM_MUTE_KEY, bgmMuted ? '1' : '0');
+  } catch { /* 忽略存储失败 */ }
+  if (bgmMuted) stopBgm();
+  else startBgm();
+}
+
+export function toggleBgm() {
+  setBgmMuted(!bgmMuted);
+  return !bgmMuted;
+}
+
+export function getBgmVolume() {
+  return bgmVolume;
+}
+
+/** 设置 BGM 音量 0..1 并持久化；默认 0.32，明显低于 SFX。 */
+export function setBgmVolume(v) {
+  bgmVolume = Math.min(1, Math.max(0, Number(v) || 0));
+  if (bgmGain && bgmPlaying) {
+    const now = ctx.currentTime;
+    bgmGain.gain.cancelScheduledValues(now);
+    bgmGain.gain.setTargetAtTime(Math.max(0.0001, bgmVolume), now, 0.08);
+  }
+  try {
+    localStorage.setItem(BGM_VOLUME_KEY, String(bgmVolume));
+  } catch { /* 忽略存储失败 */ }
+}
+
+export function isBgmPlaying() {
+  return bgmPlaying;
+}
+
+/** 调试/验收用：当前 BGM 实际走的是本地音频还是合成兜底。 */
+export function getBgmMode() {
+  if (!bgmPlaying) return 'stopped';
+  return bgmUsesFile ? 'file' : 'synth';
+}
+
+/* 切换标签页/最小化时暂停 BGM，回来再恢复；不会重复创建音乐实例。 */
+if (typeof document !== 'undefined' && !window.__busBgmVisibilityBound) {
+  window.__busBgmVisibilityBound = true;
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      if (bgmPlaying || bgmWanted || bgmStarting) {
+        bgmPausedByVisibility = true;
+        stopBgm();
+      }
+    } else if (bgmPausedByVisibility) {
+      bgmPausedByVisibility = false;
+      if (!bgmMuted) startBgm();
+    }
+  });
 }
 
 /* ---------------- 点击音效候选（试听选择器） ----------------

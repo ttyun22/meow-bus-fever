@@ -4,15 +4,18 @@
  * 本文件只负责启动控制器与开始页示例素材注入。
  */
 import { createController } from './ui/controller.js';
-import { busSvgMarkup } from './ui/render.js';
-import { getLevelCount } from './game/levelRegistry.js';
+import { busSvgMarkup, catSvgMarkup } from './ui/render.js';
+import { preloadBgm } from './ui/sound.js';
 
-// 开始页示例巴士与游戏内视觉统一（同一 SVG 素材，纯视觉初始化）
+// 开始页示例巴士/猫咪与游戏内视觉统一（同一 SVG 素材，纯视觉初始化）
 document.querySelectorAll('.mini-bus').forEach((el) => {
   el.innerHTML = busSvgMarkup(2);
 });
-
-// 开始页关卡数文案以注册表为唯一来源（不硬编码关卡数量）
-document.getElementById('start-foot').textContent = `${getLevelCount()} 个关卡 · 纯原创玩法演示`;
+document.querySelectorAll('.start-cat').forEach((el) => {
+  el.innerHTML = catSvgMarkup();
+});
 
 createController().init();
+
+// 首屏空闲时预取本地 BGM，点击「开始游戏」后可立即出声。
+preloadBgm();

@@ -16,13 +16,15 @@
  * {
  *   id:        number   关卡编号（正整数，全局唯一）
  *   name:      string   关卡名称
- *   grid:      { cols, rows }           停车场网格（2..12 的整数）
- *   slots:     number                   接客位数量（1..6 的整数）
+ *   grid:      { cols, rows }           停车场网格（2..15 的整数）
+ *   slots:     number                   接客位数量（全部关卡统一为 4）
  *   buses:     [{ id, color, len, dir, x, y, capacity? }]
  *              id: 关卡内唯一字符串；color: 颜色 key（见 COLORS）；
- *              len: 1..5 整数；dir: 'left'|'right'|'up'|'down'（车头=驶出方向）；
+ *              len: 车身长度（格），必须与 capacity 严格对应：
+ *                   2 座=2 格、4 座=3 格、6 座=4 格；
+ *              dir: 'left'|'right'|'up'|'down'（车头=驶出方向）；
  *              x,y: 锚点格（水平车最左格、竖直车最上格），须在界内且不重叠；
- *              capacity: 可选，载客容量（≥1 整数，缺省 = len）
+ *              capacity: 每辆车独立的载客容量，必须是 2/4/6 之一
  *   queue:     string[] 候车乘客颜色序列，index 0 为队首
  *   solution?: { moves: string[], par: number }  参考解法（可选，建议提供，
  *              solver 会验证其真实有效性；par 会与 BFS 最短解比对）
@@ -40,7 +42,12 @@
  * 防止「写了配置但规则不支持」的虚假关卡。
  * ------------------------------------------------------------
  */
-import { cellsOfBus } from './logic.js';
+import {
+  cellsOfBus,
+  SLOT_COUNT,
+  BUS_CAPACITIES,
+  lengthForCapacity,
+} from './logic.js';
 import { LEVELS } from './levels.js';
 
 /** 当前 UI 有配色的颜色集合（与 styles.css 的 .c-* 一一对应）。 */
@@ -48,9 +55,8 @@ export const COLORS = ['red', 'blue', 'green', 'purple', 'cyan', 'orange', 'yell
 
 const DIRS = ['left', 'right', 'up', 'down'];
 const MIN_GRID = 2;
-const MAX_GRID = 12;
-const MAX_SLOTS = 6;
-const MAX_BUS_LEN = 5;
+const MAX_GRID = 15;
+const MAX_BUS_LEN = 4; // 6 座长车 = 4 格；容量/长度映射见 logic.js
 
 const isInt = (v) => Number.isInteger(v);
 const isStr = (v) => typeof v === 'string' && v.length > 0;
@@ -78,9 +84,9 @@ export function validateLevelConfig(level) {
     errors.push(`${tag}: grid 必须是 ${MIN_GRID}..${MAX_GRID} 的整数 { cols, rows }`);
   }
 
-  /* ---- 接客位 ---- */
-  if (!isInt(level.slots) || level.slots < 1 || level.slots > MAX_SLOTS) {
-    errors.push(`${tag}: slots 必须是 1..${MAX_SLOTS} 的整数`);
+  /* ---- 接客位：所有关卡统一 4 个 ---- */
+  if (level.slots !== SLOT_COUNT) {
+    errors.push(`${tag}: 接客位必须统一为 ${SLOT_COUNT} 个（当前 ${level.slots}）`);
   }
 
   /* ---- 巴士 ---- */
@@ -101,8 +107,14 @@ export function validateLevelConfig(level) {
       if (!isInt(b.len) || b.len < 1 || b.len > MAX_BUS_LEN) errors.push(`${btag}: len 必须是 1..${MAX_BUS_LEN} 的整数`);
       if (!DIRS.includes(b.dir)) errors.push(`${btag}: dir 必须是 ${DIRS.join('/')}`);
       if (!isInt(b.x) || !isInt(b.y)) errors.push(`${btag}: x/y 必须是整数`);
-      if (b.capacity != null && (!isInt(b.capacity) || b.capacity < 1)) {
-        errors.push(`${btag}: capacity 必须是 ≥1 的整数`);
+      if (b.capacity == null) {
+        errors.push(`${btag}: 缺少 capacity（必须显式配置 ${BUS_CAPACITIES.join('/')}）`);
+      } else if (!isInt(b.capacity) || !BUS_CAPACITIES.includes(b.capacity)) {
+        errors.push(`${btag}: capacity 必须是 ${BUS_CAPACITIES.join('/')} 之一（当前 ${b.capacity}）`);
+      } else if (isInt(b.len) && b.len !== lengthForCapacity(b.capacity)) {
+        errors.push(
+          `${btag}: 容量 ${b.capacity} 座必须使用 ${lengthForCapacity(b.capacity)} 格车身（当前 len=${b.len}）`
+        );
       }
       // 几何：界内 + 不重叠（字段非法时跳过几何检查，避免级联报错）
       if (g && isInt(g.cols) && isInt(g.rows) && isInt(b?.x) && isInt(b?.y) &&
@@ -138,7 +150,7 @@ export function validateLevelConfig(level) {
     const capByColor = new Map();
     for (const b of buses) {
       if (!isStr(b?.color)) continue;
-      const cap = isInt(b.capacity) ? b.capacity : (isInt(b.len) ? b.len : 0);
+      const cap = isInt(b.capacity) ? b.capacity : 2;
       capByColor.set(b.color, (capByColor.get(b.color) ?? 0) + cap);
     }
     const needByColor = new Map();

@@ -1,12 +1,21 @@
 {
-  "name": "bus-unblock",
-  "version": "0.1.0",
-  "description": "巴士大疏通 —— 巴士交通解谜 H5 游戏",
+  "name": "cat-bus-unblock",
+  "version": "0.2.0",
+  "description": "猫咪巴士大疏通 —— 猫咪上车 × 巴士交通解谜 H5 游戏",
   "type": "module",
   "private": true,
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "start": "python3 -m http.server 8080",
+    "build": "node tools/build.mjs",
+    "preview": "npm run build && python3 -m http.server 8080 --directory dist",
+    "test": "node tools/test-gameplay.mjs",
+    "test:seeds": "node tools/test-random-seeds.mjs",
     "verify": "node src/game/solver.js",
-    "stats": "node src/game/solver.js --write-stats"
+    "stats": "node src/game/solver.js --write-stats",
+    "generate": "node tools/generate-levels.mjs",
+    "bgm": "python3 tools/generate-bgm.py"
   }
 }

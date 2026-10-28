@@ -3,7 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-  <title>巴士大疏通</title>
+  <meta name="theme-color" content="#f0e2c8">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>猫咪巴士大疏通</title>
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="src/styles.css">
 </head>
 <body>
@@ -17,18 +22,22 @@
           <div class="mini-bus c-blue"></div>
           <div class="mini-bus c-green"></div>
         </div>
-        <h1 class="game-title">巴士大疏通</h1>
-        <p class="game-sub">停车场堵成一锅粥，你来疏通！</p>
-        <ul class="start-rules">
-          <li><span class="rule-ico">🚌</span><span>点击巴士，沿<b>车头方向</b>驶出停车场，前方被挡可不行</span></li>
-          <li><span class="rule-ico">🎨</span><span>乘客只上<b>同色巴士</b>，队伍<b>最前面</b>的乘客先上车</span></li>
-          <li><span class="rule-ico">🅿️</span><span>接客位<b>有限</b>：坐满发车腾空位，占满了就会堵死</span></li>
-        </ul>
-        <div class="start-actions">
-          <button id="btn-start" class="btn btn-primary btn-big">开始游戏</button>
-          <button id="btn-levels" class="btn btn-ghost btn-big" title="选择任意关卡直接游玩">选择关卡</button>
+        <div class="start-cats" aria-hidden="true">
+          <div class="start-cat c-red"></div>
+          <div class="start-cat c-blue"></div>
+          <div class="start-cat c-green"></div>
         </div>
-        <p class="start-foot" id="start-foot">纯原创玩法演示</p>
+        <h1 class="game-title">猫咪巴士大疏通</h1>
+        <p class="game-sub">点巴士、接同色猫咪，疏通拥挤的停车场。</p>
+        <div class="start-actions">
+          <button id="btn-start" class="btn btn-primary btn-big" type="button">开始游戏</button>
+          <button id="btn-music-home" class="music-toggle" type="button"
+                  aria-pressed="true" aria-label="背景音乐开关">
+            <span class="music-toggle-ico" aria-hidden="true">🎵</span>
+            <span id="music-home-label">音乐开启</span>
+            <span class="music-toggle-track" aria-hidden="true"><span class="music-toggle-knob"></span></span>
+          </button>
+        </div>
       </div>
     </section>
 
@@ -38,22 +47,29 @@
         <div class="hud-left"><button id="hud-level" class="hud-level-btn" title="选择关卡">第 1 关</button></div>
         <div class="hud-mid"><span id="hud-moves">操作 0</span></div>
         <div class="hud-right">
-          <button id="btn-undo" class="btn btn-ghost" disabled title="撤销最近一次操作及其自动结算">撤回（2）</button>
-          <button id="btn-hint" class="btn btn-ghost" title="查看本关提示">提示</button>
-          <button id="btn-restart" class="btn btn-ghost" title="重新开始本关">重开</button>
-          <button id="btn-mute" class="btn btn-ghost btn-icon" title="音效开关">🔊</button>
+          <button id="btn-rescue" class="btn btn-ghost" type="button" disabled title="增加临时停车位（每关 2 次，每次 +1 个接客位）">加位 2</button>
+          <button id="btn-hint" class="btn btn-ghost" type="button" title="根据当前局面给出下一步建议">提示</button>
+          <button id="btn-restart" class="btn btn-ghost" type="button" title="重新开始本关">重开</button>
+          <button id="btn-mute" class="btn btn-ghost btn-icon" type="button" title="音效开关" aria-label="音效开关">🔊</button>
+          <button id="btn-music" class="btn btn-ghost btn-icon btn-music" type="button"
+                  title="背景音乐开关" aria-label="背景音乐开关" aria-pressed="true">🎵</button>
         </div>
       </header>
 
       <section id="queue-area">
-        <div class="area-label">🧍 候车队列 <span class="area-sub">（最左边先上车）</span></div>
+        <div class="area-label">🐱 猫咪候车队列 <span class="area-sub">（最左边先上车）</span><span id="queue-count" class="queue-count"></span></div>
         <div id="queue"></div>
       </section>
 
       <section id="slots-area">
-        <div class="area-label">🅿️ 接客位</div>
+        <div class="area-label">🅿️ 接客位 <span class="area-sub">（只有这里的巴士显示载客进度）</span><span id="slot-bonus" class="slot-bonus"></span><span id="waiting-count" class="waiting-count"></span></div>
         <div id="slots"></div>
       </section>
+
+      <div id="smart-hint" class="smart-hint hidden" data-kind="info">
+        <span class="smart-hint-badge">💡 建议</span>
+        <span id="smart-hint-text"></span>
+      </div>
 
       <section id="board-area">
         <div class="area-label">🚌 停车场 <span class="area-sub">（点击巴士驶出）</span></div>
@@ -73,13 +89,27 @@
       <div id="level-grid" class="level-grid"></div>
     </section>
 
+    <!-- 通用确认框（加位确认 / 可证明的死局操作提醒） -->
+    <div id="confirm" class="confirm hidden">
+      <div class="confirm-card">
+        <div id="confirm-icon" class="confirm-icon">🅿️</div>
+        <h2 id="confirm-title">增加临时停车位</h2>
+        <p id="confirm-text"></p>
+        <div class="overlay-btns">
+          <button id="btn-confirm-secondary" class="btn btn-ghost">再想想</button>
+          <button id="btn-confirm-primary" class="btn btn-primary">确认增加</button>
+        </div>
+      </div>
+    </div>
+
     <!-- 全局提示条 -->
     <div id="toast" class="toast hidden"></div>
 
     <!-- 分阶段教学气泡（非模态：不遮挡、不阻塞其他合法操作） -->
-    <div id="tut-bubble" class="tut-bubble hidden">
+    <div id="tut-bubble" class="tut-bubble hidden" role="status" aria-live="polite">
+      <button id="tut-close" class="tut-close" type="button" aria-label="跳过本提示">×</button>
       <p id="tut-text"></p>
-      <button id="tut-ok" class="btn btn-primary hidden">知道了</button>
+      <button id="tut-ok" class="btn btn-primary hidden" type="button">知道了</button>
     </div>
 
     <!-- ===== 结算覆盖层 ===== -->
