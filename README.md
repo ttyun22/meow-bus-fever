@@ -224,7 +224,8 @@ npm run generate
 - 轻量动画：队列浮动、眨眼、FLIP 补位、上车漂浮 + 弹跳缩小、接客位弹跳。
 - 基础 4 个接客位在 390px 宽容器下同排显示；6 个车位（含 2 个临时位）在 320px
   下仍不重叠，HUD 按钮会自动收窄；手机竖屏 HUD 自动分两行，技能按钮 ≥40px。
-- BGM 使用本地合成资源 `assets/bgm-cat-bus.wav`：114 BPM、16 小节、C 大调五声音阶，
+- BGM 使用本地合成资源：`assets/bgm-cat-bus.m4a`（64 kbps AAC，约 260 KB，优先加载）
+  与 `assets/bgm-cat-bus.wav`（无损兜底）。114 BPM、16 小节、C 大调五声音阶，
   木琴 + 玩具拨弦 + 轻打击；`decodeAudioData` + `loop=true` 采样级循环。默认音量
   0.32，低于 SFX，并在每次操作音播放时短暂 duck。浏览器无法解码 WAV 时回退到
   程序化合成；两条路径都有单实例保护，切换关卡不会叠加。首页与 HUD 的音乐开关
@@ -315,7 +316,8 @@ bus fever/
 ├── LEVEL_STATS.md             # 50 关逐关统计（含解法多样性 / 关键步 / 分支数）
 ├── RANDOM_SEED_STATS.md       # 随机种子回归统计
 ├── assets/
-│   ├── bgm-cat-bus.wav        # 本地合成循环 BGM（无外链/版权依赖）
+│   ├── bgm-cat-bus.m4a        # 本地合成循环 BGM（AAC 主文件，约 260 KB）
+│   ├── bgm-cat-bus.wav        # 无损兜底（AAC 解码失败时使用）
 │   └── favicon.svg
 ├── src/
 │   ├── main.js                # 入口 + 开始页巴士/猫头素材注入
@@ -335,7 +337,7 @@ bus fever/
 │       └── sound.js           # 本地 WAV BGM + ducking + 合成音效/兜底
 └── tools/
     ├── build.mjs              # 零依赖生产构建：复制 dist/ + 资源与失效引用校验
-    ├── generate-bgm.py        # 生成 assets/bgm-cat-bus.wav（纯 Python 合成）
+    ├── generate-bgm.py        # 生成 assets/bgm-cat-bus.wav（纯 Python 合成；m4a 用 afconvert 转码）
     ├── generate-levels.mjs    # 协同关卡生成器 + 多样性约束 + 回放自检
     ├── test-gameplay.mjs      # 规则层验收测试
     └── test-random-seeds.mjs  # 不同随机种子关卡回归
@@ -408,10 +410,11 @@ npx vercel --prod      # 发布生产环境
    占用格子；若它们互相阻挡，会按「第一辆可通行车辆」派车，不会凭空穿模。
 6. **旧颜色队列调整仅保留为调试函数**：`rescueQueue/useRescue` 仍可被测试或
    调试调用，但正式 UI 只有「加位」；不再宣称换色必然能解死局。
-7. **BGM 为本地合成音频**：`assets/bgm-cat-bus.wav` 由 `tools/generate-bgm.py`
-   生成，无外部商业素材；首次播放仍依赖浏览器手势解锁，切换标签页时会暂停并在
-   返回时从循环开头恢复，目前没有显式游戏暂停按钮。若浏览器不支持 WAV 解码，
-   会自动回退到 114 BPM 的程序化合成版本（听感略有差异，但不会静音或叠加）。
+7. **BGM 为本地合成音频**：WAV 由 `tools/generate-bgm.py` 生成，部署时优先加载
+   转码后的 `assets/bgm-cat-bus.m4a`，WAV 作为兜底；无外部商业素材。
+   首次播放仍依赖浏览器手势解锁，切换标签页时会暂停并在返回时恢复，
+   目前没有显式游戏暂停按钮。若 AAC/WAV 都无法解码，会自动回退到
+   114 BPM 的程序化合成版本（听感略有差异，但不会静音或叠加）。
 8. **高密度关的车辆触控目标偏小**：320px 宽、15×15 棋盘时单格约 17px，已加入
    「点击车旁空隙吸附最近车辆」与 `touch-action: manipulation`，但相比 44px
    标准触控目标仍有差距；这是保证 60 辆车一屏完整可见所做的取舍。

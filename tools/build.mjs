@@ -25,6 +25,7 @@ const REQUIRED = [
   'src/ui/render.js',
   'src/ui/sound.js',
   'src/game/generatedLevels.js',
+  'assets/bgm-cat-bus.m4a',
   'assets/bgm-cat-bus.wav',
   'assets/favicon.svg',
 ];
