@@ -23,14 +23,19 @@ const BGM_MUTE_KEY = 'bus-bgm-muted';
 const BGM_VOLUME_KEY = 'bus-bgm-volume';
 
 /**
- * 本地 BGM（assets/bgm-cat-bus.wav）。
+ * 本地 BGM。
+ * 主文件为 64 kbps AAC（约 260 KB），WAV 作为不支持 AAC 时的兜底。
  * 由 tools/generate-bgm.py 纯合成生成，无版权/外链/网络依赖；
  * 使用 decodeAudioData + loop=true 播放，循环点由音频采样精确控制。
  */
-const BGM_URL = new URL('../../assets/bgm-cat-bus.wav', import.meta.url).href;
+const BGM_URLS = [
+  new URL('../../assets/bgm-cat-bus.m4a', import.meta.url).href,
+  new URL('../../assets/bgm-cat-bus.wav', import.meta.url).href,
+];
 
 let ctx = null;
 let ctxFailed = false;
+let ctxUnlocked = false;
 let muted = false;
 let volume = 1;
 let masterGain = null;
@@ -92,6 +97,23 @@ function ensureCtx() {
 }
 
 /**
+ * 在首个用户手势内播一个 1 sample 的静音 buffer。
+ * iOS Safari / 微信 WKWebView 对 Web Audio 的解锁比单纯 resume() 更严格，
+ * 这一步能显著提高「点击开始后 BGM 真的出声」的成功率。
+ */
+function primeAudio(c) {
+  if (ctxUnlocked) return;
+  try {
+    const buffer = c.createBuffer(1, 1, 22050);
+    const src = c.createBufferSource();
+    src.buffer = buffer;
+    src.connect(c.destination);
+    src.start(0);
+    ctxUnlocked = true;
+  } catch { /* 静默失败，不影响游戏 */ }
+}
+
+/**
  * 首次用户手势时调用：解锁自动播放限制，并在允许时启动 BGM。
  * 重复调用是安全的：startBgm 有 bgmPlaying / bgmStarting 双重保护。
  */
@@ -99,6 +121,7 @@ export function unlockAudio(autoStart = true) {
   const c = ensureCtx();
   if (!c) return;
   const kick = () => {
+    primeAudio(c);
     if (autoStart && !bgmMuted) startBgm();
   };
   if (c.state === 'suspended') {
@@ -109,32 +132,42 @@ export function unlockAudio(autoStart = true) {
 }
 
 /**
- * 解码本地 BGM。只加载一次；失败时回退到程序化合成，绝不让游戏静音崩溃。
+ * 解码本地 BGM。优先加载体积更小的 AAC，失败再回退 WAV；
+ * 两者都失败时使用程序化合成，绝不让游戏静音崩溃。
  * （fetch/decode 不依赖自动播放权限，可在首次手势前预取。）
  */
+function decodeAudio(c, data) {
+  return new Promise((resolve, reject) => {
+    // Safari 旧版只支持回调形式；两种都包一层。
+    const ret = c.decodeAudioData(data, resolve, reject);
+    if (ret && typeof ret.then === 'function') ret.then(resolve, reject);
+  });
+}
+
+async function fetchBgmBuffer(c, url) {
+  const res = await fetch(url, { cache: 'force-cache' });
+  if (!res.ok) throw new Error(`BGM HTTP ${res.status}`);
+  return decodeAudio(c, await res.arrayBuffer());
+}
+
 function loadBgmBuffer() {
   if (bgmBuffer) return Promise.resolve(bgmBuffer);
   if (bgmBufferPromise) return bgmBufferPromise;
   const c = ensureCtx();
   if (!c) return Promise.resolve(null);
-  bgmBufferPromise = fetch(BGM_URL, { cache: 'force-cache' })
-    .then((res) => {
-      if (!res.ok) throw new Error(`BGM HTTP ${res.status}`);
-      return res.arrayBuffer();
-    })
-    .then((data) => new Promise((resolve, reject) => {
-      // Safari 旧版只支持回调形式；两种都包一层。
-      const ret = c.decodeAudioData(data, resolve, reject);
-      if (ret && typeof ret.then === 'function') ret.then(resolve, reject);
-    }))
-    .then((buffer) => {
-      bgmBuffer = buffer;
-      return buffer;
-    })
-    .catch(() => {
-      bgmBufferPromise = null;
-      return null;
-    });
+  bgmBufferPromise = (async () => {
+    for (const url of BGM_URLS) {
+      try {
+        const buffer = await fetchBgmBuffer(c, url);
+        if (buffer && buffer.duration > 0) {
+          bgmBuffer = buffer;
+          return buffer;
+        }
+      } catch { /* 尝试下一个格式 */ }
+    }
+    bgmBufferPromise = null; // 允许网络恢复后重试
+    return null;
+  })();
   return bgmBufferPromise;
 }
 
@@ -369,13 +402,34 @@ function stopBgmSource() {
   try { src.disconnect(); } catch { /* 已断开 */ }
 }
 
+/**
+ * 计算实际音频循环点：跳过编码器在首尾留下的静音 padding，
+ * 避免 AAC 循环时出现约 100ms 的断点。
+ */
+function cyclePoints(buffer) {
+  const data = buffer.getChannelData(0);
+  const threshold = 0.0015;
+  let start = 0;
+  let end = data.length - 1;
+  while (start < data.length && Math.abs(data[start]) < threshold) start += 1;
+  while (end > start && Math.abs(data[end]) < threshold) end -= 1;
+  if (end - start < buffer.sampleRate * 0.5) {
+    return { start: 0, end: buffer.duration };
+  }
+  return {
+    start: start / buffer.sampleRate,
+    end: Math.min(buffer.duration, (end + 1) / buffer.sampleRate),
+  };
+}
+
 function startBufferBgm(c, buffer) {
   stopBgmSource();
   const src = c.createBufferSource();
+  const loop = cyclePoints(buffer);
   src.buffer = buffer;
   src.loop = true;
-  src.loopStart = 0;
-  src.loopEnd = buffer.duration;
+  src.loopStart = loop.start;
+  src.loopEnd = loop.end;
   src.connect(bgmGain);
   src.start(c.currentTime + 0.06);
   bgmSource = src;
@@ -404,6 +458,7 @@ export function startBgm() {
   if (bgmPlaying || bgmStarting) return;
   const c = ensureCtx();
   if (!c || !bgmGain) return;
+  primeAudio(c);
   bgmStarting = true;
   (async () => {
     try {
@@ -521,6 +576,14 @@ if (typeof document !== 'undefined' && !window.__busBgmVisibilityBound) {
   });
 }
 
+/* 任何一次后续触摸都允许重试：解决 iOS/微信首次手势时
+   AudioContext 尚未 running 导致 BGM 没启动的问题。 */
+if (typeof window !== 'undefined' && !window.__busBgmGestureBound) {
+  window.__busBgmGestureBound = true;
+  window.addEventListener('pointerdown', () => {
+    if (bgmWanted && !bgmMuted && !bgmPlaying) startBgm();
+  }, { passive: true });
+}
 /* ---------------- 点击音效候选（试听选择器） ----------------
  * 六种方案在波形 / 音高轨迹 / 包络 / 节奏结构上均有明显区别。
  * play() 内部全部使用 track:true，保证试听可随时被中止。 */
