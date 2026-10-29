@@ -54,6 +54,8 @@ let bgmTimer = null;
 let bgmSource = null;
 let bgmBuffer = null;
 let bgmBufferPromise = null;
+let bgmData = null;
+let bgmDataPromise = null;
 let bgmUsesFile = false;
 let bgmPausedByVisibility = false;
 let bgmStep = 0;
@@ -132,22 +134,38 @@ export function unlockAudio(autoStart = true) {
 }
 
 /**
- * 解码本地 BGM。优先加载体积更小的 AAC，失败再回退 WAV；
- * 两者都失败时使用程序化合成，绝不让游戏静音崩溃。
- * （fetch/decode 不依赖自动播放权限，可在首次手势前预取。）
+ * 解码 BGM 字节。Safari 旧版只支持回调形式，两种都包一层。
  */
 function decodeAudio(c, data) {
   return new Promise((resolve, reject) => {
-    // Safari 旧版只支持回调形式；两种都包一层。
     const ret = c.decodeAudioData(data, resolve, reject);
     if (ret && typeof ret.then === 'function') ret.then(resolve, reject);
   });
 }
 
-async function fetchBgmBuffer(c, url) {
-  const res = await fetch(url, { cache: 'force-cache' });
-  if (!res.ok) throw new Error(`BGM HTTP ${res.status}`);
-  return decodeAudio(c, await res.arrayBuffer());
+/**
+ * 下载 BGM 原始字节。预取阶段不创建 AudioContext，避免 iOS / 微信
+ * 在用户手势前就把音频上下文锁死；真正 decode 等到点击开始后再做。
+ */
+function loadBgmBytes() {
+  if (bgmData) return Promise.resolve(bgmData);
+  if (bgmDataPromise) return bgmDataPromise;
+  bgmDataPromise = (async () => {
+    for (const url of BGM_URLS) {
+      try {
+        const res = await fetch(url, { cache: 'force-cache' });
+        if (!res.ok) continue;
+        const data = await res.arrayBuffer();
+        if (data.byteLength > 0) {
+          bgmData = data;
+          return data;
+        }
+      } catch { /* 尝试下一个格式 */ }
+    }
+    bgmDataPromise = null; // 允许网络恢复后重试
+    return null;
+  })();
+  return bgmDataPromise;
 }
 
 function loadBgmBuffer() {
@@ -156,26 +174,26 @@ function loadBgmBuffer() {
   const c = ensureCtx();
   if (!c) return Promise.resolve(null);
   bgmBufferPromise = (async () => {
-    for (const url of BGM_URLS) {
-      try {
-        const buffer = await fetchBgmBuffer(c, url);
-        if (buffer && buffer.duration > 0) {
-          bgmBuffer = buffer;
-          return buffer;
-        }
-      } catch { /* 尝试下一个格式 */ }
-    }
-    bgmBufferPromise = null; // 允许网络恢复后重试
+    const data = await loadBgmBytes();
+    if (!data) return null;
+    try {
+      const buffer = await decodeAudio(c, data);
+      if (buffer && buffer.duration > 0) {
+        bgmBuffer = buffer;
+        return buffer;
+      }
+    } catch { /* 交给程序化合成兜底 */ }
+    bgmBufferPromise = null;
     return null;
   })();
   return bgmBufferPromise;
 }
 
-/** 首屏预取/解码 BGM（只准备 AudioBuffer，不播放，不触发自动播放限制）。 */
+/** 首屏只预取压缩后的 BGM 字节，不创建 AudioContext、不播放。 */
 export function preloadBgm() {
   if (bgmMuted) return;
-  // 让首帧先绘制，再异步 fetch + decode；点击「开始游戏」时通常已就绪。
-  setTimeout(() => loadBgmBuffer(), 0);
+  // 让首帧先绘制，再异步 fetch；点击「开始游戏」时通常已下载完成。
+  setTimeout(() => loadBgmBytes(), 0);
 }
 
 /** 播放 SFX 时短暂压低 BGM，避免旋律盖住操作反馈。 */
@@ -467,6 +485,7 @@ export function startBgm() {
       }
       if (!bgmWanted || bgmMuted || document.hidden) return;
       if (c.state !== 'running') return;
+      primeAudio(c);
       const buffer = await loadBgmBuffer();
       if (!bgmWanted || bgmMuted || document.hidden) return;
       if (c.state !== 'running') return;
