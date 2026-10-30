@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-  <meta name="theme-color" content="#f0e2c8">
+  <meta name="theme-color" content="#bfe0f8">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -14,65 +14,236 @@
 <body>
   <div id="app">
 
-    <!-- ===== 开始页 ===== -->
+    <!-- ===== 开始页（天空蓝主题：Logo / 音乐 / 音效 / 选关卡片 / 猫咪巴士 / 开始按钮） ===== -->
     <section id="screen-start" class="screen">
-      <div class="start-card">
-        <div class="start-buses">
-          <div class="mini-bus c-red"></div>
-          <div class="mini-bus c-blue"></div>
-          <div class="mini-bus c-green"></div>
+      <!-- 背景装饰：云朵 / 城市轮廓 / 草坪小花（纯视觉，不拦截任何点击） -->
+      <div class="home-bg" aria-hidden="true">
+        <div class="cloud c1"></div>
+        <div class="cloud c2"></div>
+        <div class="cloud c3"></div>
+        <svg class="home-city" viewBox="0 0 750 130" preserveAspectRatio="none">
+          <g fill="#b7d7ef" opacity=".75">
+            <rect x="40" y="52" width="40" height="78" rx="3"/>
+            <rect x="150" y="34" width="30" height="96" rx="3"/>
+            <rect x="252" y="64" width="46" height="66" rx="3"/>
+            <rect x="398" y="40" width="34" height="90" rx="3"/>
+            <rect x="510" y="66" width="48" height="64" rx="3"/>
+            <rect x="632" y="36" width="30" height="94" rx="3"/>
+            <rect x="706" y="58" width="40" height="72" rx="3"/>
+          </g>
+          <g fill="#a3c6e6" opacity=".9">
+            <rect x="8" y="72" width="44" height="58" rx="3"/>
+            <rect x="88" y="56" width="34" height="74" rx="3"/>
+            <rect x="130" y="86" width="52" height="44" rx="3"/>
+            <rect x="190" y="62" width="30" height="68" rx="3"/>
+            <rect x="228" y="92" width="58" height="38" rx="3"/>
+            <rect x="306" y="70" width="36" height="60" rx="3"/>
+            <rect x="350" y="50" width="42" height="80" rx="3"/>
+            <rect x="440" y="84" width="54" height="46" rx="3"/>
+            <rect x="566" y="54" width="36" height="76" rx="3"/>
+            <rect x="610" y="88" width="50" height="42" rx="3"/>
+            <rect x="670" y="62" width="34" height="68" rx="3"/>
+            <rect x="712" y="92" width="38" height="38" rx="3"/>
+          </g>
+        </svg>
+        <div class="home-ground">
+          <svg class="flower f1" viewBox="0 0 24 34">
+            <path d="M12 33 V15" stroke="#3f8f33" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+            <g fill="#fff"><circle cx="12" cy="7.5" r="4.4"/><circle cx="6.8" cy="11" r="4.4"/><circle cx="17.2" cy="11" r="4.4"/><circle cx="8.6" cy="16.8" r="4.4"/><circle cx="15.4" cy="16.8" r="4.4"/></g>
+            <circle cx="12" cy="12" r="3.4" fill="#ffd34d"/>
+          </svg>
+          <svg class="flower f2" viewBox="0 0 24 34">
+            <path d="M12 33 V15" stroke="#3f8f33" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+            <g fill="#ffd7e3"><circle cx="12" cy="7.5" r="4.4"/><circle cx="6.8" cy="11" r="4.4"/><circle cx="17.2" cy="11" r="4.4"/><circle cx="8.6" cy="16.8" r="4.4"/><circle cx="15.4" cy="16.8" r="4.4"/></g>
+            <circle cx="12" cy="12" r="3.4" fill="#ffb03a"/>
+          </svg>
+          <svg class="flower f3" viewBox="0 0 24 34">
+            <path d="M12 33 V15" stroke="#3f8f33" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+            <g fill="#fff3c4"><circle cx="12" cy="7.5" r="4.4"/><circle cx="6.8" cy="11" r="4.4"/><circle cx="17.2" cy="11" r="4.4"/><circle cx="8.6" cy="16.8" r="4.4"/><circle cx="15.4" cy="16.8" r="4.4"/></g>
+            <circle cx="12" cy="12" r="3.4" fill="#ff9f43"/>
+          </svg>
+          <svg class="flower f4" viewBox="0 0 24 34">
+            <path d="M12 33 V15" stroke="#3f8f33" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+            <g fill="#fff"><circle cx="12" cy="7.5" r="4.4"/><circle cx="6.8" cy="11" r="4.4"/><circle cx="17.2" cy="11" r="4.4"/><circle cx="8.6" cy="16.8" r="4.4"/><circle cx="15.4" cy="16.8" r="4.4"/></g>
+            <circle cx="12" cy="12" r="3.4" fill="#ffd34d"/>
+          </svg>
         </div>
-        <div class="start-cats" aria-hidden="true">
+      </div>
+
+      <!-- 顶部：音乐开关（左）· Logo（中）· 音效开关（右） -->
+      <header class="home-top">
+        <button id="btn-music-home" class="pill-toggle" type="button"
+                aria-pressed="true" aria-label="背景音乐开关" title="背景音乐开关">
+          <span class="pill-ico" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+          </span>
+          <span class="pill-track" aria-hidden="true"><span class="pill-knob"></span></span>
+        </button>
+        <h1 class="game-title" data-text="猫咪巴士">猫咪巴士</h1>
+        <button id="btn-sfx-home" class="pill-toggle" type="button"
+                aria-pressed="true" aria-label="音效开关" title="音效开关">
+          <span class="pill-ico" aria-hidden="true">
+            <svg class="ico-on" viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.4 5.6a9 9 0 0 1 0 12.8"/></svg>
+            <svg class="ico-off" viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M22 9l-6 6M16 9l6 6"/></svg>
+          </span>
+          <span class="pill-track" aria-hidden="true"><span class="pill-knob"></span></span>
+        </button>
+      </header>
+
+      <!-- 选择关卡卡片：开关为真实可交互控件（关=从当前进度继续，开=立即展开选关） -->
+      <div class="home-level-card">
+        <div class="level-card-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24">
+            <path d="M9 4.5 3.8 6.6a1 1 0 0 0-.6.9v11a1 1 0 0 0 1.4.9L9 17.5l6 2.4 5.2-2.1a1 1 0 0 0 .6-.9v-11a1 1 0 0 0-1.4-.9L15 6.9 9 4.5Z"/>
+            <path d="M9 4.5v13M15 6.9v13"/>
+            <circle cx="12" cy="11" r="1.8" fill="#ff8a00" stroke="none"/>
+          </svg>
+        </div>
+        <div class="level-card-text">
+          <div class="level-card-title">选择关卡</div>
+          <div class="level-card-sub" id="level-card-sub">继续当前进度</div>
+        </div>
+        <button id="btn-select-level" class="ios-switch" type="button" role="switch"
+                aria-checked="false" aria-label="选择关卡开关">
+          <span class="ios-knob"></span>
+        </button>
+      </div>
+
+      <!-- 内嵌选关面板：开关打开后立即展开，不遮挡首页其他功能 -->
+      <section id="home-level-picker" class="home-level-picker hidden" aria-label="选择关卡">
+        <div class="home-picker-head">
+          <span class="home-picker-title">选择关卡</span>
+          <span id="home-picker-count" class="home-picker-count"></span>
+          <span class="home-picker-tip">点选关卡立即进入</span>
+        </div>
+        <div id="home-level-grid" class="level-grid home-level-grid"></div>
+      </section>
+
+      <!-- 第二个功能组件：开始游戏（紧接在选择关卡下方） -->
+      <div class="home-bottom">
+        <button id="btn-start" class="btn btn-play" type="button">
+          <svg class="play-ico" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="11" fill="rgba(255,255,255,.25)"/>
+            <path d="M9.6 7.4 L17.2 12 L9.6 16.6 Z" fill="#fff"/>
+          </svg>
+          <span>开始游戏</span>
+        </button>
+      </div>
+
+      <!-- 视觉主体：黄色猫咪巴士 + 车窗猫咪 + 草坪猫咪（始终位于两个功能组件下方） -->
+      <div class="home-hero">
+        <div class="hero-bus">
+          <div class="hero-bus-art"></div>
+          <div class="start-cat hero-window-cat w1 c-orange"></div>
+          <div class="start-cat hero-window-cat w2 c-purple"></div>
+          <div class="start-cat hero-window-cat w3 c-cyan"></div>
+        </div>
+        <div class="hero-cats" aria-hidden="true">
           <div class="start-cat c-red"></div>
           <div class="start-cat c-blue"></div>
           <div class="start-cat c-green"></div>
-        </div>
-        <h1 class="game-title">猫咪巴士大疏通</h1>
-        <p class="game-sub">点巴士、接同色猫咪，疏通拥挤的停车场。</p>
-        <div class="start-actions">
-          <button id="btn-start" class="btn btn-primary btn-big" type="button">开始游戏</button>
-          <button id="btn-music-home" class="music-toggle" type="button"
-                  aria-pressed="true" aria-label="背景音乐开关">
-            <span class="music-toggle-ico" aria-hidden="true">🎵</span>
-            <span id="music-home-label">音乐开启</span>
-            <span class="music-toggle-track" aria-hidden="true"><span class="music-toggle-knob"></span></span>
-          </button>
+          <div class="start-cat c-purple"></div>
+          <div class="start-cat c-orange"></div>
         </div>
       </div>
     </section>
 
     <!-- ===== 游戏页 ===== -->
     <section id="screen-game" class="screen hidden">
+      <!-- 顶部状态栏：返回 / 关卡名（下拉选关） / 操作次数 -->
       <header id="hud">
-        <div class="hud-left"><button id="hud-level" class="hud-level-btn" title="选择关卡">第 1 关</button></div>
-        <div class="hud-mid"><span id="hud-moves">操作 0</span></div>
-        <div class="hud-right">
-          <button id="btn-rescue" class="btn btn-ghost" type="button" disabled title="增加临时停车位（每关 2 次，每次 +1 个接客位）">加位 2</button>
-          <button id="btn-hint" class="btn btn-ghost" type="button" title="根据当前局面给出下一步建议">提示</button>
-          <button id="btn-restart" class="btn btn-ghost" type="button" title="重新开始本关">重开</button>
-          <button id="btn-mute" class="btn btn-ghost btn-icon" type="button" title="音效开关" aria-label="音效开关">🔊</button>
-          <button id="btn-music" class="btn btn-ghost btn-icon btn-music" type="button"
-                  title="背景音乐开关" aria-label="背景音乐开关" aria-pressed="true">🎵</button>
+        <button id="btn-back" class="hud-back" type="button" title="返回首页" aria-label="返回首页">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 5 8 12l6.5 7"/></svg>
+        </button>
+        <div class="hud-left">
+          <button id="hud-level" class="hud-level-btn" title="查看或选择关卡">第 1 关</button>
+        </div>
+        <div class="hud-moves-pill" title="当前操作次数">
+          <svg class="paw-ico" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="6.4" cy="9" r="2.5"/><circle cx="10.4" cy="6.2" r="2.7"/>
+            <circle cx="15.2" cy="6.6" r="2.7"/><circle cx="18.6" cy="9.6" r="2.3"/>
+            <path d="M12.4 10.6c-3.2 0-6.2 2.6-6.2 5.3 0 1.9 1.5 3.1 3.4 3.1 1.1 0 2-.5 2.8-.5s1.7.5 2.8.5c1.9 0 3.4-1.2 3.4-3.1 0-2.7-3-5.3-6.2-5.3z"/>
+          </svg>
+          <span id="hud-moves">操作 0</span>
         </div>
       </header>
 
-      <section id="queue-area">
-        <div class="area-label">🐱 猫咪候车队列 <span class="area-sub">（最左边先上车）</span><span id="queue-count" class="queue-count"></span></div>
+      <!-- 功能操作栏：加位 / 提示 / 重开 + 独立音效、音乐开关 -->
+      <section id="toolbar">
+        <div class="toolbar-card">
+          <button id="btn-rescue" class="tb-btn" type="button" disabled
+                  title="增加临时停车位（每关 2 次，每次 +1 个接客位）">
+            <span class="tb-ico" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="4.5"/><path d="M12 8.2v7.6M8.2 12h7.6"/></svg>
+            </span>
+            <span id="rescue-label" class="tb-label">加位 2</span>
+          </button>
+          <button id="btn-hint" class="tb-btn" type="button" title="根据当前局面给出下一步建议">
+            <span class="tb-ico" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M9.2 18h5.6M10.2 21h3.6M12 3a6.2 6.2 0 0 1 3.8 11.1c-.7.6-.8 1.2-.8 1.9h-6c0-.7-.1-1.3-.8-1.9A6.2 6.2 0 0 1 12 3z"/></svg>
+            </span>
+            <span class="tb-label">提示</span>
+          </button>
+          <button id="btn-restart" class="tb-btn" type="button" title="重新开始本关">
+            <span class="tb-ico" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.7 9.7 0 0 0-6.7 2.7L3 8"/><path d="M3 3v5h5"/></svg>
+            </span>
+            <span class="tb-label">重开</span>
+          </button>
+        </div>
+        <div class="toolbar-sound">
+          <button id="btn-mute" class="round-btn" type="button" title="音效开关" aria-label="音效开关" aria-pressed="true">
+            <svg class="ico-on" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.4 5.6a9 9 0 0 1 0 12.8"/></svg>
+            <svg class="ico-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M22 9l-6 6M16 9l6 6"/></svg>
+          </button>
+          <button id="btn-music" class="round-btn" type="button"
+                  title="背景音乐开关" aria-label="背景音乐开关" aria-pressed="true">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+          </button>
+        </div>
+      </section>
+
+      <!-- 猫咪候车队列 -->
+      <section id="queue-area" class="panel">
+        <div class="panel-head">
+          <span class="panel-ico cat-ico c-orange" id="queue-ico" aria-hidden="true"></span>
+          <span class="panel-title">猫咪候车队列</span>
+          <span id="queue-count" class="queue-count"></span>
+        </div>
         <div id="queue"></div>
       </section>
 
-      <section id="slots-area">
-        <div class="area-label">🅿️ 接客位 <span class="area-sub">（只有这里的巴士显示载客进度）</span><span id="slot-bonus" class="slot-bonus"></span><span id="waiting-count" class="waiting-count"></span></div>
+      <!-- 接客停车位 -->
+      <section id="slots-area" class="panel">
+        <div class="panel-head">
+          <span class="panel-ico p-ico" aria-hidden="true">P</span>
+          <span class="panel-title">停车位</span>
+          <span class="area-sub">（巴士在这里接猫）</span>
+          <span id="slot-bonus" class="slot-bonus"></span>
+          <span id="waiting-count" class="waiting-count"></span>
+        </div>
         <div id="slots"></div>
       </section>
 
-      <div id="smart-hint" class="smart-hint hidden" data-kind="info">
-        <span class="smart-hint-badge">💡 建议</span>
+      <!-- 实时提示栏（停车位与停车场之间） -->
+      <div id="smart-hint" class="smart-hint hidden" data-kind="info" role="status" aria-live="polite">
+        <span class="smart-hint-ico" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M9.2 18h5.6M10.2 21h3.6M12 3a6.2 6.2 0 0 1 3.8 11.1c-.7.6-.8 1.2-.8 1.9h-6c0-.7-.1-1.3-.8-1.9A6.2 6.2 0 0 1 12 3z"/></svg>
+        </span>
+        <span class="smart-hint-badge">建议</span>
         <span id="smart-hint-text"></span>
+        <span class="smart-hint-more" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>
+        </span>
       </div>
 
+      <!-- 停车场棋盘 -->
       <section id="board-area">
-        <div class="area-label">🚌 停车场 <span class="area-sub">（点击巴士驶出）</span></div>
+        <div class="panel-head board-head">
+          <span class="panel-ico bus-ico c-blue" id="board-ico" aria-hidden="true"></span>
+          <span class="panel-title">停车场</span>
+          <span class="area-sub">（点击巴士驶出）</span>
+        </div>
         <div id="board-wrap"><div id="board"></div></div>
       </section>
     </section>
@@ -89,7 +260,7 @@
       <div id="level-grid" class="level-grid"></div>
     </section>
 
-    <!-- 通用确认框（加位确认 / 可证明的死局操作提醒） -->
+    <!-- 通用确认框（加位确认 / 重开确认 / 可证明的死局操作提醒） -->
     <div id="confirm" class="confirm hidden">
       <div class="confirm-card">
         <div id="confirm-icon" class="confirm-icon">🅿️</div>

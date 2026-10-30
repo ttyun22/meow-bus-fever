@@ -16,7 +16,7 @@
  * {
  *   id:        number   关卡编号（正整数，全局唯一）
  *   name:      string   关卡名称
- *   grid:      { cols, rows }           停车场网格（2..15 的整数）
+ *   grid:      { cols, rows }           停车场网格（2..18 的整数）
  *   slots:     number                   接客位数量（全部关卡统一为 4）
  *   buses:     [{ id, color, len, dir, x, y, capacity? }]
  *              id: 关卡内唯一字符串；color: 颜色 key（见 COLORS）；
@@ -55,7 +55,7 @@ export const COLORS = ['red', 'blue', 'green', 'purple', 'cyan', 'orange', 'yell
 
 const DIRS = ['left', 'right', 'up', 'down'];
 const MIN_GRID = 2;
-const MAX_GRID = 15;
+const MAX_GRID = 18; // 高密度 4/6 座车辆需要更大的场地保持留白
 const MAX_BUS_LEN = 4; // 6 座长车 = 4 格；容量/长度映射见 logic.js
 
 const isInt = (v) => Number.isInteger(v);

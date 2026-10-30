@@ -2,11 +2,12 @@
  * 渲染层：把 state 映射为 DOM。
  * ------------------------------------------------------------
  * 视觉素材全部为内联 SVG（原创、无外部资源、断网可用）：
- *  - 巴士：统一的 2.5D 玩具公交（车身/车窗/车轮/车顶设备/高光/阴影），
- *    车顶为「深色描边 + 粗白箭头」的驶出方向标识；
+ *  - 巴士：上一版统一的 2.5D 玩具公交俯视图（车身/车窗/车轮/车顶设备/
+ *    高光/阴影），车顶为「深色描边 + 粗白箭头」的驶出方向标识；
+ *    横向车直接绘制，纵向车旋转 SVG 自身，不改变实际占格数据；
  *  - 猫咪：圆润的猫咪头（耳朵、双眼、鼻子、嘴、腮红、胡须），
  *    只用轻量浮动/眨眼/补位/弹跳缩小动画，不做身体或骨骼动画；
- *  - 停车场：沥青地面 + 车位线 + 污渍 + 边缘路缘，车辆密集但边界清楚。
+ *  - 停车场：深蓝灰地面 + 圆角格位微光，车辆密集但边界清楚。
  *
  * DOM 契约（controller.js 动画依赖，修改时必须保持）：
  *  - .bus（格区点击热区）/ .bus-inner（车身，闪烁反馈目标）
@@ -15,13 +16,50 @@
  *  - .slot-load（只出现在接客位上的载客进度）
  */
 import { buildOccupancy, pathIsClear, exitPathOfBus } from '../game/logic.js';
+import { getClearedMax, getProgressSummary } from './progress.js';
 
 /* ================ SVG 素材（原创，无外部依赖） ================ */
 
+/** 猫咪头部件（队列猫 / 上车猫 / 巴士头像徽章共用）：耳朵、脸、眼睛与简单表情。 */
+function catHeadInner() {
+  return `
+      <!-- 三角耳 + 内耳 -->
+      <path class="cat-ear" d="M13 23 L10 5 L28 14 Z"/>
+      <path class="cat-ear" d="M51 23 L54 5 L36 14 Z"/>
+      <path class="cat-ear-inner" d="M16 20 L14.5 10 L24 15 Z"/>
+      <path class="cat-ear-inner" d="M48 20 L49.5 10 L40 15 Z"/>
+
+      <!-- 圆脸 + 右侧柔和阴影 -->
+      <path class="cat-head-fill" d="M32 12 C47 12 56 20 55 32 C54 45 45 52 32 52 C19 52 10 45 9 32 C8 20 17 12 32 12 Z"/>
+      <path class="cat-head-shade" d="M43 15 C52 21 53 35 46 45 C52 39 54 26 49 19 C47 17 45 16 43 15 Z"/>
+
+      <!-- 额头虎斑 -->
+      <path class="cat-stripe" d="M25 16.5 q7 4 14 0 M23 21 q9 4.5 18 0"/>
+
+      <!-- 眼睛（眨眼动画作用在 .cat-eyes 上） -->
+      <g class="cat-eyes">
+        <ellipse class="cat-eye-white" cx="24" cy="31.5" rx="6.2" ry="7.2"/>
+        <ellipse class="cat-eye-white" cx="40" cy="31.5" rx="6.2" ry="7.2"/>
+        <ellipse class="cat-pupil" cx="24.8" cy="32.4" rx="2.8" ry="3.9"/>
+        <ellipse class="cat-pupil" cx="39.2" cy="32.4" rx="2.8" ry="3.9"/>
+        <circle class="cat-eye-shine" cx="26" cy="30.4" r="1.6"/>
+        <circle class="cat-eye-shine" cx="40.4" cy="30.4" r="1.6"/>
+      </g>
+
+      <!-- 腮红、鼻子、笑嘴、胡须 -->
+      <ellipse class="cat-blush" cx="15" cy="39.5" rx="4.4" ry="2.5"/>
+      <ellipse class="cat-blush" cx="49" cy="39.5" rx="4.4" ry="2.5"/>
+      <path class="cat-nose" d="M29.2 38.4 L34.8 38.4 L32 41.6 Z"/>
+      <path class="cat-mouth" d="M32 41.6 q0 3 -3.4 3.4 M32 41.6 q0 3 3.4 3.4"/>
+      <path class="cat-whisker" d="M11 36 L1.5 33.5 M11 40 L1.5 41 M53 36 L62.5 33.5 M53 40 L62.5 41"/>`;
+}
+
 /**
- * 2.5D 玩具公交 · 默认朝右。
+ * 2.5D 玩具公交 · 默认朝右（上一版游戏内车辆素材）。
  * viewBox 比例严格为「车长 : 车宽 = len : 1」，与占用格一致。
  * 统一透视：车头在右，车尾在左；同一套高光/阴影/材质用于所有车辆。
+ * 纵向车辆由 CSS 旋转 SVG 自身（.dir-up/.dir-down），
+ * 不改变车辆实际长度、宽度、占格数量和方向数据。
  */
 export function busSvgMarkup(len, opts = {}) {
   const W = 100 * len;
@@ -129,83 +167,107 @@ export function catSvgMarkup(opts = {}) {
   const walking = !!opts.walking;
   return `<svg class="cat-svg${walking ? ' cat-walking' : ''}" viewBox="0 0 64 62" aria-hidden="true">
     <ellipse class="cat-shadow" cx="32" cy="58" rx="20" ry="3.4"/>
-
-    <g class="cat-head">
-      <!-- 三角耳 + 内耳 -->
-      <path class="cat-ear" d="M13 23 L10 5 L28 14 Z"/>
-      <path class="cat-ear" d="M51 23 L54 5 L36 14 Z"/>
-      <path class="cat-ear-inner" d="M16 20 L14.5 10 L24 15 Z"/>
-      <path class="cat-ear-inner" d="M48 20 L49.5 10 L40 15 Z"/>
-
-      <!-- 圆脸 + 右侧柔和阴影 -->
-      <path class="cat-head-fill" d="M32 12 C47 12 56 20 55 32 C54 45 45 52 32 52 C19 52 10 45 9 32 C8 20 17 12 32 12 Z"/>
-      <path class="cat-head-shade" d="M43 15 C52 21 53 35 46 45 C52 39 54 26 49 19 C47 17 45 16 43 15 Z"/>
-
-      <!-- 额头虎斑 -->
-      <path class="cat-stripe" d="M25 16.5 q7 4 14 0 M23 21 q9 4.5 18 0"/>
-
-      <!-- 眼睛（眨眼动画作用在 .cat-eyes 上） -->
-      <g class="cat-eyes">
-        <ellipse class="cat-eye-white" cx="24" cy="31.5" rx="6.2" ry="7.2"/>
-        <ellipse class="cat-eye-white" cx="40" cy="31.5" rx="6.2" ry="7.2"/>
-        <ellipse class="cat-pupil" cx="24.8" cy="32.4" rx="2.8" ry="3.9"/>
-        <ellipse class="cat-pupil" cx="39.2" cy="32.4" rx="2.8" ry="3.9"/>
-        <circle class="cat-eye-shine" cx="26" cy="30.4" r="1.6"/>
-        <circle class="cat-eye-shine" cx="40.4" cy="30.4" r="1.6"/>
-      </g>
-
-      <!-- 腮红、鼻子、笑嘴、胡须 -->
-      <ellipse class="cat-blush" cx="15" cy="39.5" rx="4.4" ry="2.5"/>
-      <ellipse class="cat-blush" cx="49" cy="39.5" rx="4.4" ry="2.5"/>
-      <path class="cat-nose" d="M29.2 38.4 L34.8 38.4 L32 41.6 Z"/>
-      <path class="cat-mouth" d="M32 41.6 q0 3 -3.4 3.4 M32 41.6 q0 3 3.4 3.4"/>
-      <path class="cat-whisker" d="M11 36 L1.5 33.5 M11 40 L1.5 41 M53 36 L62.5 33.5 M53 40 L62.5 41"/>
-    </g>
+    <g class="cat-head">${catHeadInner()}</g>
   </svg>`;
 }
 
-/** 停车场地面：沥青、车位线、路缘、油渍与轮胎痕。 */
+/**
+ * 首页主视觉：侧视黄色「猫咪巴士」（原创内联 SVG，无外部资源）。
+ * 车身/车窗/车轮/顶牌全部矢量绘制；车窗里的猫咪不在此函数内，
+ * 由 main.js 复用 catSvgMarkup() 以 HTML 绝对定位叠加（.hero-window-cat），
+ * 坐标与下方三块车窗玻璃一一对应（viewBox 640x340）。
+ */
+export function heroBusSvgMarkup() {
+  const windows = [64, 196, 328].map((x) => `
+    <g class="hero-win">
+      <rect x="${x}" y="92" width="118" height="98" rx="20" fill="#fff6dd" stroke="#e9c98d" stroke-width="2.5"/>
+      <rect x="${x + 9}" y="101" width="100" height="80" rx="13" fill="url(#hero-glass)"/>
+      <path d="M ${x + 20} 168 L ${x + 48} 112" stroke="rgba(255,255,255,.7)" stroke-width="7" stroke-linecap="round"/>
+      <path d="M ${x + 36} 170 L ${x + 56} 130" stroke="rgba(255,255,255,.45)" stroke-width="4" stroke-linecap="round"/>
+    </g>`).join('');
+
+  return `<svg class="hero-bus-svg" viewBox="0 0 640 340" aria-hidden="true">
+    <defs>
+      <linearGradient id="hero-body" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#ffe477"/>
+        <stop offset=".55" stop-color="#ffc93f"/>
+        <stop offset="1" stop-color="#f7b026"/>
+      </linearGradient>
+      <linearGradient id="hero-glass" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#e6f7ff"/>
+        <stop offset="1" stop-color="#b5e0f8"/>
+      </linearGradient>
+      <clipPath id="hero-body-clip">
+        <rect x="28" y="48" width="584" height="224" rx="48"/>
+      </clipPath>
+    </defs>
+
+    <!-- 落地阴影 -->
+    <ellipse cx="320" cy="317" rx="266" ry="13" fill="rgba(46,94,40,.18)"/>
+
+    <!-- 车轮（先画，车身压住上半） -->
+    <g class="hero-wheels">
+      <circle cx="155" cy="272" r="41" fill="#333a42" stroke="#1f242a" stroke-width="3"/>
+      <circle cx="155" cy="272" r="17" fill="#e3e8ec" stroke="#a5aeb6" stroke-width="2"/>
+      <circle cx="155" cy="272" r="5.5" fill="#a5aeb6"/>
+      <circle cx="485" cy="272" r="41" fill="#333a42" stroke="#1f242a" stroke-width="3"/>
+      <circle cx="485" cy="272" r="17" fill="#e3e8ec" stroke="#a5aeb6" stroke-width="2"/>
+      <circle cx="485" cy="272" r="5.5" fill="#a5aeb6"/>
+    </g>
+
+    <!-- 车身主体 -->
+    <rect x="28" y="48" width="584" height="224" rx="48" fill="url(#hero-body)" stroke="#e8952a" stroke-width="3.5"/>
+    <g clip-path="url(#hero-body-clip)">
+      <rect x="28" y="216" width="584" height="56" fill="#f2a52c"/>
+      <rect x="28" y="204" width="584" height="14" fill="#fff3d2" opacity=".92"/>
+      <path d="M 76 60 H 560" stroke="rgba(255,255,255,.5)" stroke-width="7" stroke-linecap="round"/>
+      <!-- 裙边猫爪印装饰 -->
+      <g fill="#e8952a" opacity=".5">
+        <ellipse cx="320" cy="248" rx="13" ry="10"/>
+        <circle cx="305" cy="233" r="5"/>
+        <circle cx="315" cy="228" r="5"/>
+        <circle cx="325" cy="228" r="5"/>
+        <circle cx="335" cy="233" r="5"/>
+      </g>
+    </g>
+
+    <!-- 车顶牌 -->
+    <rect x="340" y="14" width="192" height="44" rx="16" fill="#fff8e8" stroke="#eecf95" stroke-width="2.5"/>
+    <text x="436" y="44" text-anchor="middle" font-size="25" font-weight="800" letter-spacing="3"
+          fill="#f08a2a" font-family="'PingFang SC', system-ui, sans-serif">CAT BUS</text>
+
+    <!-- 侧窗 ×3（猫咪由 HTML 叠加在玻璃上） -->
+    ${windows}
+
+    <!-- 挡风玻璃（车头朝右） -->
+    <g class="hero-windshield">
+      <rect x="478" y="84" width="120" height="118" rx="24" fill="#fff6dd" stroke="#e9c98d" stroke-width="2.5"/>
+      <rect x="487" y="93" width="102" height="100" rx="16" fill="url(#hero-glass)"/>
+      <path d="M 502 176 L 540 106" stroke="rgba(255,255,255,.75)" stroke-width="8" stroke-linecap="round"/>
+      <path d="M 524 180 L 552 128" stroke="rgba(255,255,255,.45)" stroke-width="4.5" stroke-linecap="round"/>
+    </g>
+
+    <!-- 前灯、尾灯 -->
+    <circle cx="590" cy="232" r="18" fill="#fff6c9" opacity=".28"/>
+    <circle cx="590" cy="232" r="12" fill="#fff6c9" stroke="#e0a63c" stroke-width="2.5"/>
+    <rect x="38" y="200" width="13" height="26" rx="6.5" fill="#ff8f7e" stroke="#e0654f" stroke-width="2"/>
+  </svg>`;
+}
+
+/** 停车场地面：深蓝灰渐变 + 顶部微光 + 内圈细描边（格位微光由 .cell 提供）。 */
 function lotBackgroundSvg(cols, rows, cell) {
   const w = cols * cell;
   const h = rows * cell;
-  const bays = [];
-  for (let c = 0; c <= cols; c++) {
-    bays.push(`<path d="M ${c * cell} 0 V ${h}"/>`);
-  }
-  for (let r = 0; r <= rows; r++) {
-    bays.push(`<path d="M 0 ${r * cell} H ${w}"/>`);
-  }
-  const ticks = [];
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const x = c * cell;
-      const y = r * cell;
-      const len = Math.max(3, cell * 0.16);
-      ticks.push(`<path d="M ${x + 3} ${y + len + 3} V ${y + 3} H ${x + len + 3}"/>`);
-      ticks.push(`<path d="M ${x + cell - len - 3} ${y + cell - 3} H ${x + cell - 3} V ${y + cell - len - 3}"/>`);
-    }
-  }
   return `<svg class="lot-bg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
     <defs>
-      <linearGradient id="lot-asphalt" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0" stop-color="#48515c"/>
-        <stop offset="0.5" stop-color="#3e464f"/>
-        <stop offset="1" stop-color="#343b43"/>
+      <linearGradient id="lot-asphalt" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#46566c"/>
+        <stop offset="1" stop-color="#38475b"/>
       </linearGradient>
-      <pattern id="lot-speckle" width="18" height="18" patternUnits="userSpaceOnUse">
-        <circle cx="3" cy="5" r="1" fill="#ffffff" opacity="0.035"/>
-        <circle cx="13" cy="12" r="0.8" fill="#000000" opacity="0.12"/>
-        <circle cx="8" cy="2" r="0.7" fill="#ffffff" opacity="0.03"/>
-      </pattern>
     </defs>
     <rect width="${w}" height="${h}" fill="url(#lot-asphalt)"/>
-    <rect width="${w}" height="${h}" fill="url(#lot-speckle)"/>
-    <g class="lot-bays" stroke="rgba(255,255,255,.13)" stroke-width="1.1" fill="none">${bays.join('')}</g>
-    <g class="lot-ticks" stroke="rgba(255,209,102,.22)" stroke-width="1.4" fill="none" stroke-linecap="round">${ticks.join('')}</g>
-    <path d="M ${cell * 0.5} ${h - cell * 1.7} q ${cell * 1.2} ${-cell * 0.7} ${cell * 2.2} 0" stroke="rgba(0,0,0,.18)" stroke-width="${Math.max(2, cell * 0.08)}" fill="none" stroke-linecap="round"/>
-    <path d="M ${w - cell * 2.8} ${cell * 1.4} q ${cell * 1.1} ${cell * 0.5} ${cell * 2.2} 0" stroke="rgba(0,0,0,.14)" stroke-width="${Math.max(2, cell * 0.07)}" fill="none" stroke-linecap="round"/>
-    <rect x="2" y="2" width="${w - 4}" height="${h - 4}" rx="14" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="3"/>
-    <rect x="7" y="7" width="${w - 14}" height="${h - 14}" rx="10" fill="none" stroke="rgba(0,0,0,.22)" stroke-width="2" stroke-dasharray="10 7"/>
+    <rect width="${w}" height="${h * 0.42}" fill="rgba(255,255,255,.03)"/>
+    <rect x="3" y="3" width="${w - 6}" height="${h - 6}" rx="14" fill="none" stroke="rgba(255,255,255,.10)" stroke-width="2"/>
   </svg>`;
 }
 
@@ -220,8 +282,10 @@ export function createRenderer() {
   const queueCountEl = $('queue-count');
 
   let cell = 40;
-  /** 车身相对格区的视觉缩放：留出车位线与相邻车的边界。 */
-  const BUS_VISUAL_SCALE = 0.9;
+  /** 车身相对格区的视觉缩放：尽量放大车辆，同时留出车位线边界。 */
+  const BUS_VISUAL_SCALE = 0.95;
+  /** 最近一次棋盘布局的快照，用于避免上车/结算期间重复改尺寸。 */
+  let boardLayout = { cols: 0, rows: 0, width: 0, height: 0 };
 
   /* ---------- HUD ---------- */
   function renderHud(state, level) {
@@ -229,34 +293,89 @@ export function createRenderer() {
     hudMovesEl.textContent = `操作 ${state.moveCount}`;
   }
 
-  /* ---------- 选关页 ---------- */
+  /* ---------- 选关页 ----------
+     通关状态来自 progress.js 存档：
+     - 50 关全部开放，任意关卡均可点击进入，不再渲染锁定状态；
+     - 已通关关卡带 ✓ 标记；当前进行中的关卡高亮描边；
+     - 顶部计数展示当前通关进度。 */
   function renderLevelSelect(summaries, currentIndex) {
     const grid = $('level-grid');
-    $('levels-count').textContent = `共 ${summaries.length} 关`;
+    const prog = getProgressSummary();
+    $('levels-count').textContent = `已通关 ${prog.cleared} / ${prog.total} 关`;
     grid.innerHTML = '';
     for (const s of summaries) {
+      const cleared = s.index <= getClearedMax();
       const btn = document.createElement('button');
-      btn.className = 'level-cell' + (s.index === currentIndex ? ' current' : '');
+      btn.className = 'level-cell'
+        + (s.index === currentIndex ? ' current' : '')
+        + (cleared ? ' cleared' : '');
       btn.dataset.levelIndex = String(s.index);
-      btn.title = `第 ${s.id} 关 · ${s.name}`;
+      btn.title = `第 ${s.id} 关 · ${s.name}${cleared ? '（已通关）' : ''}`;
       const stars = s.difficulty ? '★'.repeat(s.difficulty) : '';
       btn.innerHTML =
         `<span class="level-no">${s.id}</span>` +
         `<span class="level-name">${s.name}</span>` +
-        `<span class="level-stars">${stars}</span>`;
+        `<span class="level-stars">${cleared ? '<b class="level-done">✓ 已通关</b>' : stars}</span>`;
+      grid.appendChild(btn);
+    }
+  }
+
+  /* ---------- 首页内嵌选关面板 ----------
+     与全屏选关页读取同一份 progress.js 存档；区别是：
+     - .selected 表示玩家在首页刚刚点选的关卡（开始游戏进入它）；
+     - .current 表示真实进度所在关卡（关闭选关功能时的默认起点）；
+     - 50 关全部开放，点击任意关卡直接进入。 */
+  function renderHomeLevelSelect(summaries, selectedIndex, progressIndex) {
+    const grid = $('home-level-grid');
+    if (!grid) return;
+    const prog = getProgressSummary();
+    const countEl = $('home-picker-count');
+    if (countEl) countEl.textContent = `已通关 ${prog.cleared}/${prog.total}`;
+    grid.innerHTML = '';
+    for (const s of summaries) {
+      const cleared = s.index <= getClearedMax();
+      const btn = document.createElement('button');
+      btn.className = 'level-cell'
+        + (s.index === progressIndex ? ' current' : '')
+        + (s.index === selectedIndex ? ' selected' : '')
+        + (cleared ? ' cleared' : '');
+      btn.dataset.levelIndex = String(s.index);
+      btn.title = `第 ${s.id} 关 · ${s.name}${s.index === selectedIndex ? '（已选择）' : ''}${cleared ? '（已通关）' : ''}`;
+      const stars = s.difficulty ? '★'.repeat(s.difficulty) : '';
+      btn.innerHTML =
+        `<span class="level-no">${s.id}</span>` +
+        `<span class="level-name">${s.name}</span>` +
+        `<span class="level-stars">${
+          s.index === selectedIndex
+            ? '<b class="level-picked">✓ 已选</b>'
+            : cleared ? '<b class="level-done">✓ 已通关</b>' : stars
+        }</span>`;
       grid.appendChild(btn);
     }
   }
 
   /* ---------- 停车场 ---------- */
   function renderBoard(state) {
-    // 预留 #board 的外圈描边/阴影（CSS 中约 9px），避免手机窄屏被裁切。
-    // 不设固定最小 cell：空间不足时优先缩小棋盘，保证整块场地可见。
-    const BOARD_GUTTER = 10;
-    const availW = boardWrapEl.clientWidth - BOARD_GUTTER * 2;
-    const availH = boardWrapEl.clientHeight - BOARD_GUTTER * 2;
-    if (availW > 0 && availH > 0) {
+    // 预留 #board 的外圈描边/阴影，避免手机窄屏被裁切。
+    // 只在「网格或可用空间真的变化」时重算 cell，保证上车/结算期间
+    // 棋盘容器的宽高、位置和坐标基准完全不变。
+    const wrapStyle = getComputedStyle(boardWrapEl);
+    const padX = (parseFloat(wrapStyle.paddingLeft) || 0) + (parseFloat(wrapStyle.paddingRight) || 0);
+    const padY = (parseFloat(wrapStyle.paddingTop) || 0) + (parseFloat(wrapStyle.paddingBottom) || 0);
+    const availW = Math.max(0, boardWrapEl.clientWidth - padX);
+    const availH = Math.max(0, boardWrapEl.clientHeight - padY);
+    const sizeChanged = Math.abs(availW - boardLayout.width) > 1
+      || Math.abs(availH - boardLayout.height) > 1;
+    const gridChanged = state.grid.cols !== boardLayout.cols
+      || state.grid.rows !== boardLayout.rows;
+    if ((gridChanged || sizeChanged) && availW > 0 && availH > 0) {
       cell = Math.max(6, Math.floor(Math.min(availW / state.grid.cols, availH / state.grid.rows)));
+      boardLayout = {
+        cols: state.grid.cols,
+        rows: state.grid.rows,
+        width: availW,
+        height: availH,
+      };
     }
     const w = cell * state.grid.cols;
     const h = cell * state.grid.rows;
@@ -297,7 +416,8 @@ export function createRenderer() {
     const zoneH = (horizontal ? 1 : bus.len) * cell;
     const busW = zoneW * BUS_VISUAL_SCALE;
     const busH = zoneH * BUS_VISUAL_SCALE;
-    // 横向 SVG 的原始画布：长 × 宽；竖直车旋转后与格区重合
+    // 上一版素材默认朝右：纵向车辆只旋转 SVG 自身，
+    // 外层 .bus 热区仍严格等于实际占格，不改变移动逻辑。
     const svgW = horizontal ? busW : busH;
     const svgH = horizontal ? busH : busW;
     const el = document.createElement('div');
@@ -318,80 +438,86 @@ export function createRenderer() {
     return el;
   }
 
-  /* ---------- 候车队列（数据窗口 + FLIP 补位） ----------
-     只把队首附近有限数量的猫放进 DOM；后方猫咪留在 state.queue 中，
-     当前面的猫上车后自动补位。这样既不会一次铺满屏幕，也能保留
-     完整队列顺序。 */
-  function visibleQueueCount() {
-    const w = queueEl.clientWidth || 360;
-    // 猫头宽度由 CSS 的 --queue-cat-w 控制（手机更紧凑），
-    // 先读取实际值再计算能放几只，避免窄屏溢出或桌面显示过少。
-    const styles = getComputedStyle(queueEl);
-    const itemW = parseFloat(styles.getPropertyValue('--queue-cat-w')) || 40;
-    const gap = parseFloat(styles.columnGap || styles.gap) || 2;
-    // 预留：左侧“先上”标签 + 右侧 “+N 只候车” 徽标 + 内边距。
-    return Math.max(3, Math.min(9, Math.floor((w - 118) / (itemW + gap))));
+  /* ---------- 候车队列（完整排列 + 横向滚动） ----------
+     按 state.queue 的真实顺序为每只猫创建节点，第一排尽量排满；
+     超出容器宽度时由 CSS 横向滚动查看，不再用「+N 只候车」气泡
+     代替大部分猫咪。队列只会在队首消费，因此用增量同步避免每次
+     上车都重建上百个节点。 */
+  function passengerEl(p, isHead) {
+    const el = document.createElement('div');
+    el.className = `passenger c-${p.color}${isHead ? ' head' : ''}`;
+    el.dataset.passengerId = p.id;
+    el.dataset.color = p.color;
+    if (isHead) el.title = '队首猫咪：下一个上车';
+    el.innerHTML = catSvgMarkup();
+    return el;
+  }
+
+  function syncQueueHead() {
+    let first = true;
+    queueEl.querySelectorAll('.passenger').forEach((el) => {
+      el.classList.toggle('head', first);
+      if (first) el.title = '队首猫咪：下一个上车';
+      else el.removeAttribute('title');
+      first = false;
+    });
   }
 
   function renderQueue(state) {
-    const prevRects = new Map();
-    queueEl.querySelectorAll('.passenger').forEach((el) => {
-      prevRects.set(el.dataset.passengerId, el.getBoundingClientRect());
-    });
-    const visible = Math.min(state.queue.length, visibleQueueCount());
-    const hidden = Math.max(0, state.queue.length - visible);
-
-    queueEl.innerHTML = '';
     if (state.queue.length === 0) {
-      const empty = document.createElement('div');
-      empty.className = 'queue-empty';
-      empty.textContent = '🐾 猫咪们全都上车啦';
-      queueEl.appendChild(empty);
+      queueEl.innerHTML = '<div class="queue-empty">🐾 猫咪们全都上车啦</div>';
       if (queueCountEl) queueCountEl.textContent = '已全部上车';
       return;
     }
 
-    for (let i = 0; i < visible; i++) {
-      const p = state.queue[i];
-      const el = document.createElement('div');
-      el.className = `passenger c-${p.color}${i === 0 ? ' head' : ''}`;
-      el.dataset.passengerId = p.id;
-      el.dataset.color = p.color;
-      if (i === 0) el.title = '队首猫咪：下一个上车';
-      el.innerHTML = catSvgMarkup();
-      queueEl.appendChild(el);
-    }
+    // 清除「已全部上车」等占位节点；正常队列里不应再有 +N 气泡。
+    queueEl.querySelectorAll('.queue-empty, .queue-more').forEach((el) => el.remove());
 
-    if (hidden > 0) {
-      const more = document.createElement('div');
-      more.className = 'queue-more';
-      more.innerHTML = `<b>+${hidden}</b><span>只候车</span>`;
-      more.title = `还有 ${hidden} 只猫咪在后方排队`;
-      queueEl.appendChild(more);
-    }
-    if (queueCountEl) {
-      queueCountEl.textContent = `剩余 ${state.queue.length} 只 · 队首 ${COLOR_CN[state.queue[0].color] || ''}`;
-    }
+    const ids = state.queue.map((p) => p.id);
+    const idSet = new Set(ids);
+    let rebuild = false;
 
-    // FLIP：让老猫平滑左移，新补位的猫从右侧滑入
+    // 淘汰已上车的节点（通常只是队首这一只）。
     queueEl.querySelectorAll('.passenger').forEach((el) => {
-      const old = prevRects.get(el.dataset.passengerId);
-      if (!old) {
-        el.classList.add('q-enter');
-        return;
-      }
-      const now = el.getBoundingClientRect();
-      const dx = old.left - now.left;
-      const dy = old.top - now.top;
-      if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
-        if (typeof el.animate === 'function') {
-          el.animate(
-            [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'translate(0, 0)' }],
-            { duration: 280, easing: 'cubic-bezier(.2,.85,.3,1)' }
-          );
-        }
-      }
+      if (!idSet.has(el.dataset.passengerId)) el.remove();
     });
+
+    const existing = Array.from(queueEl.querySelectorAll('.passenger'));
+    if (existing.length > ids.length) {
+      rebuild = true;
+    } else {
+      for (let i = 0; i < existing.length; i++) {
+        if (existing[i].dataset.passengerId !== ids[i]) { rebuild = true; break; }
+      }
+    }
+
+    if (rebuild) {
+      // 队列被重新排序（例如救援）：按真实顺序整体重建。
+      queueEl.querySelectorAll('.passenger').forEach((el) => el.remove());
+      const frag = document.createDocumentFragment();
+      for (let i = 0; i < state.queue.length; i++) {
+        frag.appendChild(passengerEl(state.queue[i], i === 0));
+      }
+      queueEl.appendChild(frag);
+    } else {
+      // 正常上车：仅在尾部补齐（通常无需追加），不移动已有节点。
+      for (let i = existing.length; i < ids.length; i++) {
+        const isHead = i === 0;
+        const el = passengerEl(state.queue[i], isHead);
+        if (!isHead) el.classList.add('q-enter');
+        queueEl.appendChild(el);
+      }
+      syncQueueHead();
+    }
+
+    if (queueCountEl) {
+      const headName = COLOR_CN[state.queue[0].color] || '';
+      queueCountEl.innerHTML =
+        `剩余 <b class="qc-num">${state.queue.length}</b> 只 · 队首 <b class="qc-head">${headName}猫</b>`;
+    }
+
+    // 队首始终在最左侧：自动回到队首，避免多次上车后停在队列中段。
+    queueEl.scrollLeft = 0;
   }
 
   const COLOR_CN = {
@@ -527,6 +653,7 @@ export function createRenderer() {
     renderAll,
     renderHud,
     renderLevelSelect,
+    renderHomeLevelSelect,
     renderBoard,
     renderQueue,
     renderSlots,

@@ -459,6 +459,7 @@ if (process.argv.includes('--write-stats')) {
   fs.writeFileSync(new URL('../../LEVEL_STATS.md', import.meta.url),
     `# 关卡统计（由 node src/game/solver.js --write-stats 生成）\n\n` +
     `- 车辆 / 接客位 / 场地：关卡配置；所有关卡统一 4 个基础接客位，容量 2/4/6 与车身 2/3/4 格严格对应，第 10 关起车辆数 31–60。\n` +
+    `- 容量分布：第 10–50 关由 CAPACITY_DISTRIBUTION 统一生成，整体约 4 座 64% / 2 座 22% / 6 座 14%，且逐关均为 4 座最多。\n` +
     `- 阻挡/链：阻挡关系条数 / 最长依赖链层数。\n` +
     `- 开局/队首：开局路径畅通的车辆数 / 其中与队首猫咪同色的车辆数。\n` +
     `- 扇出：单辆车最多直接阻挡多少辆车；用于避免所有关键车被同一辆车锁死。\n` +

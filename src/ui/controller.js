@@ -77,11 +77,37 @@ import {
   getBgmMode,
 } from './sound.js';
 import { createTutorial } from './tutorial.js';
+import {
+  markLevelCleared,
+  getProgressSummary,
+  resetProgress,
+} from './progress.js';
 
 const COLOR_NAMES = {
   red: '红色', blue: '蓝色', green: '绿色', purple: '紫色',
   cyan: '青色', orange: '橙色', yellow: '黄色',
 };
+
+/* 首页「选择关卡」开关偏好：
+   关 = 「开始游戏」从当前进度继续；
+   开 = 首页立即展开 50 关选关面板，点任意关卡直接进入。持久化到 localStorage。 */
+const SELECT_MODE_KEY = 'bus-fever-select-level-mode';
+const SELECTED_LEVEL_KEY = 'bus-fever-selected-level';
+function getSelectLevelMode() {
+  try { return localStorage.getItem(SELECT_MODE_KEY) === '1'; } catch { return false; }
+}
+function setSelectLevelMode(on) {
+  try { localStorage.setItem(SELECT_MODE_KEY, on ? '1' : '0'); } catch { /* 忽略存储失败 */ }
+}
+function getSavedSelectedIndex() {
+  try {
+    const v = parseInt(localStorage.getItem(SELECTED_LEVEL_KEY), 10);
+    return Number.isInteger(v) ? v : -1;
+  } catch { return -1; }
+}
+function setSavedSelectedIndex(index) {
+  try { localStorage.setItem(SELECTED_LEVEL_KEY, String(index)); } catch { /* 忽略存储失败 */ }
+}
 
 /**
  * 快速模式（?fast=1）：跳过动画等待，逻辑立即结算到终态。
@@ -109,6 +135,8 @@ export function createController() {
   let levelIndex = 0;
   let level = getLevelByIndex(0);
   let state = null;
+  /** 首页选关面板中玩家选中的关卡；-1 表示尚未确定。 */
+  let selectedLevelIndex = getSavedSelectedIndex();
 
   /* ---- 并行调度状态（见文件头注释） ---- */
   let epoch = 0;
@@ -234,7 +262,9 @@ export function createController() {
       && rescueLeft > 0
       && extra < MAX_EXTRA_SLOTS
       && !isBusy();
-    btn.textContent = `加位 ${rescueLeft}`;
+    // 只更新文案 span，保留按钮内的图标 SVG
+    const label = $('rescue-label');
+    if (label) label.textContent = `加位 ${rescueLeft}`;
     btn.disabled = !canPress;
     if (!state) {
       btn.title = '进入关卡后可以增加临时停车位';
@@ -340,6 +370,9 @@ export function createController() {
     }
     levelIndex = i;
     level = cfg;
+    // 记住最近进入的关卡；返回首页且选关功能开启时仍指向它。
+    selectedLevelIndex = i;
+    setSavedSelectedIndex(i);
     bumpEpoch();
     state = initializeLevel(level);
     pendingRelayout = false;
@@ -380,6 +413,85 @@ export function createController() {
     $('screen-game').classList.add('hidden');
     $('screen-levels').classList.add('hidden');
     $('screen-start').classList.remove('hidden');
+    syncHomePicker(); // 选关功能开启时，返回首页直接保持展开
+    renderHomeCard(); // 返回首页：刷新选关开关状态与通关进度文案
+  }
+
+  /* ================= 首页「选择关卡」卡片 =================
+     开关是真实控件（role=switch）：打开后立即展开内嵌选关面板，
+     不用再点「开始游戏」。关闭后恢复默认规则：从当前真实进度继续。
+     50 关全部开放；通关记录与默认续玩关卡读取 progress.js 存档，不使用静态假数据。 */
+  function defaultLevelIndex() {
+    const p = getProgressSummary();
+    return Math.max(0, Math.min(getLevelCount() - 1, p.nextIndex));
+  }
+
+  function resolveSelectedIndex() {
+    const count = getLevelCount();
+    if (selectedLevelIndex >= 0 && selectedLevelIndex < count) {
+      return selectedLevelIndex;
+    }
+    selectedLevelIndex = defaultLevelIndex();
+    setSavedSelectedIndex(selectedLevelIndex);
+    return selectedLevelIndex;
+  }
+
+  function renderHomePicker() {
+    if (!getSelectLevelMode()) return;
+    const selected = resolveSelectedIndex();
+    renderer.renderHomeLevelSelect(
+      listLevelSummaries(),
+      selected,
+      defaultLevelIndex()
+    );
+    const grid = $('home-level-grid');
+    const active = grid?.querySelector('.level-cell.selected');
+    if (active && typeof active.scrollIntoView === 'function') {
+      active.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+  }
+
+  function syncHomePicker() {
+    const on = getSelectLevelMode();
+    const picker = $('home-level-picker');
+    const startScreen = $('screen-start');
+    if (!picker || !startScreen) return;
+    picker.classList.toggle('hidden', !on);
+    startScreen.classList.toggle('picker-open', on);
+    if (on) renderHomePicker();
+  }
+
+  function renderHomeCard() {
+    const on = getSelectLevelMode();
+    const sw = $('btn-select-level');
+    if (sw) sw.setAttribute('aria-checked', String(on));
+    const sub = $('level-card-sub');
+    if (sub) {
+      const p = getProgressSummary();
+      const progText = p.cleared > 0 ? `已通关 ${p.cleared}/${p.total}` : `共 ${p.total} 关`;
+      if (on) {
+        const idx = resolveSelectedIndex();
+        const lv = getLevelByIndex(idx);
+        sub.textContent = `已选 第 ${lv.id} 关 · ${lv.name}`;
+      } else {
+        const idx = defaultLevelIndex();
+        const lv = getLevelByIndex(idx);
+        sub.textContent = `继续第 ${lv.id} 关 · ${progText}`;
+      }
+    }
+  }
+
+  function toggleSelectLevelMode() {
+    const next = !getSelectLevelMode();
+    setSelectLevelMode(next);
+    if (next) {
+      // 打开开关 = 立即展开选关界面，并自动定位当前选中关卡。
+      selectedLevelIndex = resolveSelectedIndex();
+      setSavedSelectedIndex(selectedLevelIndex);
+    }
+    syncHomePicker();
+    renderHomeCard();
+    playSound('click');
   }
 
   /* ================= 选关页 =================
@@ -399,6 +511,7 @@ export function createController() {
 
   function hideLevelSelect() {
     $('screen-levels').classList.add('hidden');
+    renderHomeCard(); // 回到首页时同步选关开关状态与进度文案
     if (levelsFrom === 'game' && state) {
       $('screen-game').classList.remove('hidden');
       // 选关页期间视口可能变化；等一帧让 flex 布局落定后重算棋盘
@@ -414,7 +527,22 @@ export function createController() {
       }));
     } else {
       $('screen-start').classList.remove('hidden');
+      syncHomePicker();
     }
+  }
+
+  /** HUD「重开」：先确认再重置，避免误触丢失进度；结算覆盖层的重试属明确选择，不走此确认。 */
+  function requestRestart() {
+    if (!state) return;
+    showConfirm({
+      icon: '🔄',
+      title: '重新开始本关？',
+      text: '重开将清空当前局面与操作次数，\n加位次数会恢复为 2 次。',
+      primaryLabel: '确认重开',
+      secondaryLabel: '取消',
+      onPrimary: () => { hideConfirm(); restartLevel(); },
+      onSecondary: hideConfirm,
+    });
   }
 
   /** 重新开始当前关卡（不刷新页面，重建全新 state）。 */
@@ -593,7 +721,7 @@ export function createController() {
     const rect = renderer.boardEl.getBoundingClientRect();
     const x = clientX - rect.left;
     const y = clientY - rect.top;
-    const threshold = Math.max(10, renderer.getCellSize() * 0.65);
+    const threshold = Math.max(11, renderer.getCellSize() * 0.72);
     let bestId = null;
     let bestDist = Infinity;
     for (const el of renderer.boardEl.querySelectorAll('.bus')) {
@@ -810,29 +938,28 @@ export function createController() {
     cat.className = `walking-cat c-${ev.color}`;
     cat.style.width = `${fromRect.width}px`;
     cat.style.height = `${fromRect.height}px`;
-    cat.style.left = `${fromRect.left}px`;
-    cat.style.top = `${fromRect.top}px`;
-    // 行驶段统一使用提速后的时长，保证状态结算与动画节奏一致。
-    cat.style.transition =
-      `left ${BOARD_MOVE_MS}ms cubic-bezier(.3,.7,.4,1), ` +
-      `top ${BOARD_MOVE_MS}ms cubic-bezier(.3,.7,.4,1), ` +
-      `transform ${BOARD_MOVE_MS}ms cubic-bezier(.3,.7,.4,1)`;
+    // 固定在视口原点，位置全部用 transform 在合成层内表达；
+    // 不修改 left/top，也不会触发布局重排或棋盘位移。
+    cat.style.left = '0';
+    cat.style.top = '0';
+    cat.style.transform = `translate3d(${fromRect.left}px, ${fromRect.top}px, 0)`;
     cat.innerHTML = catSvgMarkup({ walking: true });
     document.body.appendChild(cat);
-    void cat.offsetWidth;
     // 漂浮到车门前：略微偏向车头侧，悬起一点，随后弹跳缩小钻入
     const targetW = fromRect.width;
     const targetH = fromRect.height;
     const doorX = to.left + to.width * 0.56 - targetW / 2;
     const doorY = to.top + to.height * 0.48 - targetH / 2;
-    cat.style.left = `${doorX}px`;
-    cat.style.top = `${doorY}px`;
-    cat.style.transform = 'translateY(-7px) scale(1.04)';
+    // 行驶段统一使用提速后的时长，保证状态结算与动画节奏一致。
+    cat.style.transition =
+      `transform ${BOARD_MOVE_MS}ms cubic-bezier(.3,.7,.4,1), opacity 140ms linear`;
+    void cat.offsetWidth; // 先提交初始 transform，确保 transition 生效
+    cat.style.transform = `translate3d(${doorX}px, ${doorY - 7}px, 0) scale(1.04)`;
     await sleep(BOARD_MOVE_MS);
     // 到车门后快速缩小钻入（避免乘客在车外停留过久）
     cat.style.transition =
       `transform ${BOARD_SHRINK_TRANSITION_MS}ms ease-in, opacity ${BOARD_SHRINK_TRANSITION_MS}ms ease-in`;
-    cat.style.transform = 'translateY(-2px) scale(.2) rotate(6deg)';
+    cat.style.transform = `translate3d(${doorX}px, ${doorY - 2}px, 0) scale(.2) rotate(6deg)`;
     cat.style.opacity = '0';
     await sleep(BOARD_SHRINK_MS);
     cat.remove();
@@ -965,6 +1092,8 @@ export function createController() {
   function showWin() {
     playSound('win');
     tutorial.completeLevel(level.id); // 通关即「已掌握」本关教学，永不再弹
+    markLevelCleared(levelIndex);     // 进度存档：记录通关（只前进不回退，不影响进入权限）
+    renderHomeCard();                 // 首页卡片的通关进度文案同步刷新
     updateControlButtons();
     const isLast = levelIndex >= getLevelCount() - 1;
     const par = level.solution.par;
@@ -1016,11 +1145,26 @@ export function createController() {
     toastTimer = setTimeout(() => t.classList.add('hidden'), ms);
   }
 
+  /** 音效开关：首页胶囊按钮与游戏内圆形按钮共用同一状态，互相同步。 */
   function updateMuteBtn() {
-    const btn = $('btn-mute');
-    if (!btn) return;
-    btn.textContent = isMuted() ? '🔇' : '🔊';
-    btn.title = isMuted() ? '音效已静音，点击开启' : '音效开启中，点击静音';
+    const muted = isMuted();
+    const title = muted ? '音效已静音，点击开启' : '音效开启中，点击静音';
+    for (const id of ['btn-mute', 'btn-sfx-home']) {
+      const btn = $(id);
+      if (!btn) continue;
+      // 图标为内联 SVG（.ico-on / .ico-off），用 is-off 类切换，不改 textContent
+      btn.classList.toggle('is-off', muted);
+      btn.setAttribute('aria-pressed', String(!muted));
+      btn.title = title;
+      btn.setAttribute('aria-label', title);
+    }
+  }
+
+  /** 首页 / 游戏内音效开关的共同入口：切换后两处按钮同步刷新。 */
+  function toggleSfx() {
+    setMuted(!isMuted());
+    updateMuteBtn();
+    playSound('click'); // 静音后无声、解除静音立即有声，即所得反馈
   }
 
   /** BGM 独立开关：首页与游戏内共用同一状态，关闭后 SFX 保持正常。 */
@@ -1038,9 +1182,8 @@ export function createController() {
       home.title = muted ? '背景音乐已关闭，点击开启' : '背景音乐开启中，点击关闭';
       home.classList.toggle('is-off', muted);
       home.setAttribute('aria-pressed', String(!muted));
+      home.setAttribute('aria-label', home.title);
     }
-    const label = $('music-home-label');
-    if (label) label.textContent = muted ? '音乐关闭' : '音乐开启';
   }
 
   /** 首页 / 游戏内音乐开关的共同入口：真实停止或恢复 BGM。 */
@@ -1092,7 +1235,7 @@ export function createController() {
   /* ================= 初始化 ================= */
 
   function init() {
-    // 浏览器自动播放策略：首次用户手势只解锁 AudioContext；
+    // 浏览器自动播放策略：首次用户手势只解锁媒体元素；
     // 真正的 BGM 由「开始游戏」或音乐开关在用户手势中启动。
     window.addEventListener('pointerdown', () => unlockAudio(false));
 
@@ -1100,7 +1243,32 @@ export function createController() {
       playSound('click');
       unlockAudio(false);
       startBgm();
-      startLevel(0);
+      // 选关功能开启：直接进入首页刚刚选中的关卡；
+      // 关闭：从当前真实进度继续（不是强制回第 1 关）。
+      const target = getSelectLevelMode()
+        ? resolveSelectedIndex()
+        : defaultLevelIndex();
+      startLevel(target);
+    });
+    $('btn-select-level').addEventListener('click', toggleSelectLevelMode);
+    // 整个「选择关卡」卡片都可点击展开/收起，不必精确点中右侧开关。
+    $('screen-start').querySelector('.home-level-card').addEventListener('click', (e) => {
+      if (e.target.closest('#btn-select-level')) return; // 开关自己处理，避免双触发
+      toggleSelectLevelMode();
+    });
+    $('home-level-grid').addEventListener('click', (e) => {
+      const cell = e.target.closest('.level-cell');
+      if (!cell || cell.disabled) return;
+      const index = Number(cell.dataset.levelIndex);
+      if (!Number.isInteger(index)) return;
+      // 50 关全部开放：点任意关卡直接进入，不要求先通关前置关卡。
+      selectedLevelIndex = index;
+      setSavedSelectedIndex(index);
+      setSelectLevelMode(true);
+      playSound('click');
+      unlockAudio(false);
+      startBgm();
+      startLevel(index);
     });
     $('btn-levels')?.addEventListener('click', () => { playSound('click'); showLevelSelect('start'); });
     $('btn-levels-back').addEventListener('click', () => { playSound('click'); hideLevelSelect(); });
@@ -1111,17 +1279,20 @@ export function createController() {
       playSound('click');
       startLevel(Number(cell.dataset.levelIndex)); // 选关即跳转（含重玩当前关）
     });
-    $('btn-restart').addEventListener('click', () => { playSound('click'); restartLevel(); });
+    $('btn-restart').addEventListener('click', () => { playSound('click'); requestRestart(); });
+    $('btn-back').addEventListener('click', () => { playSound('click'); backToStart(); });
+    $('smart-hint').addEventListener('click', () => {
+      if (!state) return;
+      playSound('click');
+      showHint();
+    });
     $('btn-rescue').addEventListener('click', () => { playSound('click'); requestAddSlot(); });
     $('btn-hint').addEventListener('click', () => {
       playSound('click');
       showHint();
     });
-    $('btn-mute').addEventListener('click', () => {
-      setMuted(!isMuted());
-      updateMuteBtn();
-      playSound('click'); // 静音后无声、解除静音立即有声，即所得反馈
-    });
+    $('btn-mute').addEventListener('click', toggleSfx);
+    $('btn-sfx-home').addEventListener('click', toggleSfx);
     $('btn-music').addEventListener('click', toggleMusic);
     $('btn-music-home').addEventListener('click', toggleMusic);
     $('btn-overlay-primary').addEventListener('click', () => { playSound('click'); overlayPrimaryFn?.(); });
@@ -1131,6 +1302,8 @@ export function createController() {
     window.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideConfirm(); });
     updateMuteBtn();
     updateMusicButtons();
+    syncHomePicker(); // 持久化的选关开关：启动时立即展开
+    renderHomeCard(); // 首页选关卡片：开关初始状态 + 进度文案
 
     const coarsePointer = window.matchMedia?.('(pointer: coarse)').matches;
     renderer.boardEl.addEventListener('click', (e) => {
@@ -1182,6 +1355,8 @@ export function createController() {
       get state() { return state; },
       get level() { return level; },
       get levelIndex() { return levelIndex; },
+      get selectedLevelIndex() { return getSelectLevelMode() ? resolveSelectedIndex() : -1; },
+      get defaultLevelIndex() { return defaultLevelIndex(); },
       get isBusy() { return isBusy(); },
       get rescueLeft() { return rescueLeft; },
       get undoLeft() { return undoLeft; },
@@ -1191,6 +1366,9 @@ export function createController() {
       get bgmPlaying() { return isBgmPlaying(); },
       get bgmMode() { return getBgmMode(); },
       get tutorial() { return tutorial.debug(); },
+      get progress() { return getProgressSummary(); },
+      get selectLevelMode() { return getSelectLevelMode(); },
+      resetProgress: () => { resetProgress(); syncHomePicker(); renderHomeCard(); },
       startLevel,
       showLevelSelect,
       hideLevelSelect,
